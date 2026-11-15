@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tip Tracker">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f9b8cf">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Tip Tracker</title>
+<style>
+/* --ac: pink fill, --on: text on the pink, --at: pink dark enough to read as text */
+:root{--bg:#f8f3f2;--cd:#fff;--tx:#1c1c1e;--mu:#6b6b70;--ac:#f9b8cf;--on:#5a1836;--at:#b93a70;--a2:#fde9f0;--bd:#ebe3e2;--rd:#c0392b;--y:#e0a83a;--b:#5b8def;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141112;--cd:#1f1a1c;--tx:#f1f1ef;--mu:#a39c9f;--ac:#f7a8c4;--on:#3d0f24;--at:#f7a8c4;--a2:#3a1f2b;--bd:#312a2d;--rd:#ff7b6b}}
+:root[data-theme="dark"]{--bg:#141112;--cd:#1f1a1c;--tx:#f1f1ef;--mu:#a39c9f;--ac:#f7a8c4;--on:#3d0f24;--at:#f7a8c4;--a2:#3a1f2b;--bd:#312a2d;--rd:#ff7b6b}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:16px 16px 96px;max-width:560px;margin:0 auto}
+h1{font-size:26px;margin:8px 0 14px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu);margin:22px 0 8px}
+.card{background:var(--cd);border:1px solid var(--bd);border-radius:16px;padding:14px 16px;margin-bottom:12px}
+.hero{background:var(--ac);color:var(--on);border:0}
+.hero .big{font-size:40px;font-weight:700;letter-spacing:-.02em}
+.hero small{opacity:.85}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.st{background:var(--cd);border:1px solid var(--bd);border-radius:14px;padding:12px}
+.st b{display:block;font-size:20px}
+.st span,.mu{color:var(--mu);font-size:13px}
+.seg{display:flex;background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:3px;margin-bottom:12px}
+.seg button{flex:1;border:0;background:none;color:var(--mu);padding:8px;border-radius:9px;font:inherit;font-weight:600}
+.seg button.on{background:var(--ac);color:var(--on)}
+label{display:block;font-size:13px;color:var(--mu);margin-bottom:12px}
+input,textarea{display:block;width:100%;margin-top:4px;padding:12px;font:inherit;font-size:20px;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:12px}
+textarea{font-size:12px}
+input[type="date"]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;width:100%;min-height:52px;text-align:left;font-family:inherit}
+input[type="date"]::-webkit-date-and-time-value{text-align:left;min-height:1.2em}
+button.pri,button.del,button.sec{width:100%;padding:14px;border-radius:14px;border:0;font:inherit;font-weight:700;margin-top:6px}
+button.pri{background:var(--ac);color:var(--on)}
+button.del{background:none;color:var(--rd)}
+button.sec{background:var(--a2);color:var(--at)}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0}
+.row.t{border-top:1px solid var(--bd);margin-top:4px;padding-top:9px;font-weight:700}
+.bar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:8px 0}
+.lg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--mu)}
+.lg i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}
+.bars{display:flex;align-items:flex-end;gap:6px;height:120px;padding-top:8px}
+.bars div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;font-size:10px;color:var(--mu)}
+.bars u{display:block;width:100%;background:var(--ac);opacity:.55;border-radius:5px 5px 0 0;text-decoration:none;min-height:2px}
+.bars .best u{background:var(--at);opacity:1}
+.item{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--bd);cursor:pointer}
+.item:last-child{border:0}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--cd);border-top:1px solid var(--bd);padding:6px 8px calc(8px + env(safe-area-inset-bottom,0px))}
+nav button{flex:1;border:0;background:none;color:var(--mu);font:inherit;font-size:12px;font-weight:600;padding:8px 0}
+nav button.on{color:var(--at)}
+.note{font-size:12px;color:var(--mu);line-height:1.5}
+.tb{width:100%;border-collapse:collapse;font-size:13px}
+.tb th{color:var(--mu);font-weight:600;text-align:right;padding:6px 3px;font-size:12px}
+.tb td{padding:7px 3px;text-align:right;border-top:1px solid var(--bd)}
+.tb td:first-child,.tb th:first-child{text-align:left;color:var(--mu)}
+</style>
+</head>
+<body>
+<div id="main"></div>
+<nav>
+<button data-t="dash" onclick="go('dash')">Dashboard</button>
+<button data-t="pay" onclick="go('pay')">Paycheck</button>
+<button data-t="add" onclick="go('add')">Add shift</button>
+<button data-t="hist" onclick="go('hist')">History</button>
+<button data-t="set" onclick="go('set')">Settings</button>
+</nav>
+<script>
+var K="shifts.v1",SK="settings.v2";
+var D={shifts:[],set:{wage:18.47,tipOut:6,rep:12,spw:4}};
+var tab="dash",edit=null,per="month";
+
+function load(){
+  try{var a=localStorage.getItem(K);if(a)D.shifts=JSON.parse(a);
+  var b=localStorage.getItem(SK);if(b)Object.assign(D.set,JSON.parse(b));}catch(e){}
+  // Ask the phone to keep this app's data even when storage runs low
+  try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
+}
+
+/* ---------- backup ---------- */
+var BK="backup.v1",pend=null;
+function bkInfo(){try{return JSON.parse(localStorage.getItem(BK))||{};}catch(e){return{};}}
+function sig(){var s=JSON.stringify(D.shifts),h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return h+":"+D.shifts.length;}
+// Due when there are shifts the last backup doesn't have, and it's been a week (or 3 shifts with no backup yet)
+function bkDue(){var b=bkInfo();if(!D.shifts.length||b.sig===sig())return false;return b.t?Date.now()-b.t>=7*864e5:D.shifts.length>=3;}
+function bkAgo(){var b=bkInfo();if(!b.t)return "never";var d=Math.floor((Date.now()-b.t)/864e5);return d<1?"today":d===1?"yesterday":d+" days ago";}
+function bkData(){return JSON.stringify({app:"tip-tracker",v:1,saved:new Date().toISOString(),set:D.set,shifts:D.shifts});}
+function bkDone(t){try{localStorage.setItem(BK,JSON.stringify({t:Date.now(),sig:sig()}));}catch(e){}render();msg(t||"Backup saved.");}
+function bkCopy(txt){
+  var no=function(){msg("Couldn’t share. Open Settings and tap Copy backup instead.");};
+  try{navigator.clipboard.writeText(txt).then(function(){bkDone("Backup copied. Paste it into Notes or a message.");},no);}catch(e){no();}
+}
+function backupNow(){
+  var txt=bkData(),f=null;
+  try{f=new File([txt],"tip-tracker-backup-"+iso(new Date())+".txt",{type:"text/plain"});}catch(e){}
+  if(f&&navigator.share&&navigator.canShare&&navigator.canShare({files:[f]})){
+    navigator.share({files:[f],title:"Tip Tracker backup"}).then(function(){bkDone();},function(e){if(!e||e.name!=="AbortError")bkCopy(txt);});
+  }else bkCopy(txt);
+}
+function bkParse(txt){
+  var a=JSON.parse(txt),L=Array.isArray(a)?a:a&&a.shifts;
+  if(!Array.isArray(L))throw 0;
+  L=L.filter(function(s){return s&&typeof s.date==="string"&&typeof s.hrs==="number";});
+  L.forEach(function(s,i){if(!s.id)s.id=Date.now()+i;s.cc=+s.cc||0;s.cash=+s.cash||0;});
+  return{shifts:L,set:!Array.isArray(a)&&a.set&&typeof a.set==="object"?a.set:null};
+}
+function bkLoad(txt){try{pend=bkParse(txt);render();}catch(e){pend=null;msg("That doesn’t look like a valid backup.");}}
+function bkFile(el){var f=el.files&&el.files[0];if(!f)return;var r=new FileReader();r.onload=function(){bkLoad(String(r.result));};r.readAsText(f);}
+function bkRestore(){
+  if(!pend)return;
+  D.shifts=pend.shifts;
+  if(pend.set)["wage","tipOut","rep","spw"].forEach(function(k){if(typeof pend.set[k]==="number")D.set[k]=pend.set[k];});
+  pend=null;save();
+  try{localStorage.setItem(BK,JSON.stringify({t:Date.now(),sig:sig()}));}catch(e){}
+  go("dash");msg("Backup restored.");
+}
+function save(){
+  try{localStorage.setItem(K,JSON.stringify(D.shifts));localStorage.setItem(SK,JSON.stringify(D.set));}catch(e){}
+}
+
+/* ---------- money + pay ---------- */
+function $(n){return "$"+n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});}
+function pct(n){return (n*100).toFixed(1)+"%";}
+// California daily overtime: 1.5x after 8 hrs, 2x after 12 hrs
+function wagePay(h){var w=D.set.wage;return w*(Math.min(h,8)+1.5*Math.max(0,Math.min(h,12)-8)+2*Math.max(0,h-12));}
+function ccNet(s){return s.cc*(1-D.set.tipOut/100);}
+
+/* ---------- 2026 tax model (single, no dependents) ---------- */
+var FED=[[12400,.10],[50400,.12],[105700,.22],[201775,.24],[256225,.32],[640600,.35],[Infinity,.37]];
+var CA=[[11456,.01],[27157,.02],[42861,.04],[59498,.06],[75197,.08],[384109,.093],[460927,.103],[768213,.113],[Infinity,.123]];
+function prog(x,b){var t=0,p=0;for(var i=0;i<b.length;i++){if(x>p)t+=(Math.min(x,b[i][0])-p)*b[i][1];p=b[i][0];}return t;}
+// annual tax: wg = hourly wages, cc = CC tips after tip-out, ch = cash tips
+function T(wg,cc,cr,cu){
+  var w2=wg+cc+cr,agi=w2+cu,q=Math.min(25000,cc+cr+cu);
+  var fed=prog(Math.max(0,agi-q-16100),FED);
+  var ca=Math.max(0,prog(Math.max(0,agi-5900),CA)-158);
+  var fica=.0765*agi,sdi=.013*w2;
+  return{fed:fed,ca:ca,fica:fica,sdi:sdi,tot:fed+ca+fica+sdi};
+}
+// Rates come from her typical shift (last 40 logged), scaled to a full year
+function rates(){
+  var wg=wagePay(6),cc=120*(1-D.set.tipOut/100),ch=60,rc=100*D.set.rep/100,L=D.shifts.slice(-40),uc=Math.max(0,ch-rc);
+  if(L.length){wg=0;cc=0;ch=0;rc=0;uc=0;L.forEach(function(s){var q=(s.ck||0)*D.set.rep/100;wg+=wagePay(s.hrs);cc+=ccNet(s);ch+=s.cash;rc+=q;uc+=Math.max(0,s.cash-q);});wg/=L.length;cc/=L.length;ch/=L.length;rc/=L.length;uc/=L.length;}
+  var spw=D.set.spw;if(L.length>=4){var ds=L.map(function(s){return s.date;}).sort(),span=(new Date(ds[ds.length-1]+"T12:00:00")-new Date(ds[0]+"T12:00:00"))/864e5+1;spw=L.length/Math.max(1,Math.ceil(span/7));}
+  var f=spw*52,A=T(wg*f,cc*f,rc*f,0),B=A;
+  var pw=(wg+cc+rc)*f;
+  return{spw:spw,pr:pw?B.tot/pw:0,cr:uc?(A.tot-B.tot)/(uc*f):.2,eff:A.tot/((wg+cc+ch)*f||1),ann:(wg+cc+ch)*f,A:A};
+}
+function calc(s,R){
+  var wp=wagePay(s.hrs),cn=ccNet(s),g=wp+cn+s.cash;
+  var rp=(s.ck||0)*D.set.rep/100,tp=(wp+cn+rp)*R.pr,tc=0,tax=tp;
+  return{wp:wp,cn:cn,g:g,tax:tax,tc:tc,rp:rp,net:g-tax,hr:s.hrs?g/s.hrs:0,nh:s.hrs?(g-tax)/s.hrs:0};
+}
+
+/* ---------- dates ---------- */
+function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function fd(s){return new Date(s+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});}
+function inPer(d){
+  var n=new Date(),t=iso(n);
+  if(per==="year")return d.slice(0,4)===t.slice(0,4);
+  if(per==="month")return d.slice(0,7)===t.slice(0,7);
+  var ws=new Date(n);ws.setDate(n.getDate()-((n.getDay()+6)%7));
+  return d>=iso(ws)&&d<=t;
+}
+
+/* ---------- views ---------- */
+function vDash(){
+  if(!D.shifts.length)return "<h1>Welcome</h1><div class=\"card\">No shifts logged yet. Tap <b>Add shift</b> after your next shift and your dashboard will fill in.</div>";
+  var R=rates(),all=D.shifts.map(function(s){return{s:s,c:calc(s,R)};});
+  var P=all.filter(function(x){return inPer(x.s.date);});
+  function sum(k){return P.reduce(function(a,x){return a+x.c[k];},0);}
+  var hrs=P.reduce(function(a,x){return a+x.s.hrs;},0),g=sum("g"),tax=sum("tax"),net=g-tax;
+  var wp=sum("wp"),cn=sum("cn"),ch=P.reduce(function(a,x){return a+x.s.cash;},0);
+  var lbl={week:"this week",month:"this month",year:"this year"}[per];
+  var h="<h1>Dashboard</h1>"+(bkDue()?"<div class=\"card\" style=\"border-color:var(--y)\"><b>Time to back up your shifts</b><div class=\"note\" style=\"margin:4px 0 6px\">Last backup: "+bkAgo()+". Two taps keeps your history safe if anything happens to this phone.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button></div>":"")+"<div class=\"seg\">"+["week","month","year"].map(function(p){return "<button class=\""+(p===per?"on":"")+"\" onclick=\"per='"+p+"';render()\">"+p[0].toUpperCase()+p.slice(1)+"</button>";}).join("")+"</div>";
+  h+="<div class=\"card hero\"><small>Estimated take-home "+lbl+"</small><div class=\"big\">"+$(net)+"</div><small>"+P.length+" shift"+(P.length===1?"":"s")+" · "+hmt(hrs)+"</small></div>";
+  h+="<div class=\"grid\">"+
+   st("Gross earnings",$(g))+st("Est. taxes",$(tax))+
+   st("Hourly (gross)",hrs?$(g/hrs)+"/hr":"–")+st("Hourly (take-home)",hrs?$(net/hrs)+"/hr":"–")+
+   st("Avg per shift",P.length?$(net/P.length):"–")+st("Cash tips kept",$(ch))+"</div>";
+  h+=tbl(R);
+  var tot=wp+cn+ch||1;
+  h+="<h2>Where it comes from</h2><div class=\"card\"><div class=\"bar\"><span style=\"width:"+wp/tot*100+"%;background:var(--ac)\"></span><span style=\"width:"+cn/tot*100+"%;background:var(--y)\"></span><span style=\"width:"+ch/tot*100+"%;background:var(--b)\"></span></div><div class=\"lg\"><span><i style=\"background:var(--ac)\"></i>Wages "+$(wp)+"</span><span><i style=\"background:var(--y)\"></i>Card tips "+$(cn)+"</span><span><i style=\"background:var(--b)\"></i>Cash "+$(ch)+"</span></div></div>";
+  var wd=[0,0,0,0,0,0,0],wn=[0,0,0,0,0,0,0];
+  all.forEach(function(x){var d=(new Date(x.s.date+"T12:00:00").getDay()+6)%7;wd[d]+=x.c.net;wn[d]++;});
+  var av=wd.map(function(v,i){return wn[i]?v/wn[i]:0;}),mx=Math.max.apply(null,av)||1;
+  var N=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  h+="<h2>Best days (avg take-home per shift)</h2><div class=\"card\"><div class=\"bars\">"+av.map(function(v,i){return "<div class=\""+(v===mx&&v>0?"best":"")+"\">"+(wn[i]?"$"+Math.round(v):"")+"<u style=\"height:"+(v/mx*80)+"%\"></u>"+N[i]+"</div>";}).join("")+"</div></div>";
+  var last=all.slice().sort(function(a,b){return a.s.date<b.s.date?-1:1;}).slice(-14),m2=Math.max.apply(null,last.map(function(x){return x.c.net;}))||1;
+  h+="<h2>Last "+last.length+" shifts</h2><div class=\"card\"><div class=\"bars\">"+last.map(function(x){return "<div>$"+Math.round(x.c.net)+"<u style=\"height:"+(x.c.net/m2*75)+"%\"></u>"+x.s.date.slice(5).replace("-","/")+"</div>";}).join("")+"</div></div>";
+  var bs=all.slice().sort(function(a,b){return b.c.hr-a.c.hr;}),b1=bs[0],w1=bs[bs.length-1];
+  h+="<div class=\"grid\">"+st("Best shift",$(b1.c.hr)+"/hr<br><span>"+fd(b1.s.date)+"</span>")+st("Slowest shift",$(w1.c.hr)+"/hr<br><span>"+fd(w1.s.date)+"</span>")+"</div>";
+  return h;
+}
+var CA25=[[11079,.01],[26264,.02],[41452,.04],[57542,.06],[72724,.08],[371479,.093],[445771,.103],[742953,.113],[Infinity,.123]];
+var po=0,rem=null,PA='2026-10-15';
+function perRange(o){var a=new Date(PA+'T12:00:00'),t=new Date();t.setHours(12,0,0,0);var n=Math.floor(Math.round((t-a)/864e5)/14)+o,s=new Date(a),e,p;s.setDate(a.getDate()+n*14);e=new Date(s);e.setDate(s.getDate()+13);p=new Date(e);p.setDate(e.getDate()+7);return{s:iso(s),e:iso(e),p:iso(p)};}
+function sd(x){return new Date(x+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});}
+// Mirrors her paystub: annualize x26, standard deduction, 2026 brackets; FICA + SDI = 8.95%
+function chk(wg,cc,rp){var tx=wg+cc+rp,fica=tx*.0895,fit=prog(Math.max(0,tx*26-16100),FED)/26,sit=tx*26<=20000?0:1.1*prog(tx*26-5706,CA25)/26,tax=fica+fit+sit;return{tx:tx,fica:fica,fit:fit,sit:sit,tax:tax,dep:tx-tax-rp};}
+function agg(p,R){var o=per;per=p;var L=D.shifts.filter(function(s){return inPer(s.date);});per=o;var a={n:L.length,h:0,g:0,t:0,cn:0,ch:0};L.forEach(function(s){var c=calc(s,R);a.h+=s.hrs;a.g+=c.g;a.t+=c.tax;a.cn+=c.cn;a.ch+=s.cash;});a.net=a.g-a.t;return a;}
+function tbl(R){
+  var C=['week','month','year'].map(function(p){return agg(p,R);});
+  function row(l,f){return '<tr><td>'+l+'</td>'+C.map(function(a){return '<td>'+f(a)+'</td>';}).join('')+'</tr>';}
+  return '<h2>Week, month and year to date</h2><div class="card"><table class="tb"><tr><th></th><th>WTD</th><th>MTD</th><th>YTD</th></tr>'+
+   row('Shifts',function(a){return a.n;})+row('Hours',function(a){return a.h?hmt(a.h):'–';})+row('Gross',function(a){return $(a.g);})+row('Est. taxes',function(a){return $(a.t);})+row('Take-home',function(a){return '<b>'+$(a.net)+'</b>';})+row('Card tips',function(a){return $(a.cn);})+row('Cash tips',function(a){return $(a.ch);})+row('Gross / hr',function(a){return a.h?$(a.g/a.h):'–';})+row('Take-home / hr',function(a){return a.h?$(a.net/a.h):'–';})+row('Avg / shift',function(a){return a.n?$(a.net/a.n):'–';})+'</table></div>';
+}
+function vPay(){
+  var P=perRange(po),L=D.shifts.filter(function(s){return s.date>=P.s&&s.date<=P.e;}),wg=0,cc=0,rp=0,ch=0;
+  L.forEach(function(s){wg+=wagePay(s.hrs);cc+=ccNet(s);rp+=(s.ck||0)*D.set.rep/100;ch+=s.cash;});
+  var A=chk(wg,cc,rp);
+  function r(a,b,c){return '<div class="row '+(c||'')+'"><span>'+a+'</span><span>'+b+'</span></div>';}
+  var h='<h1>Paycheck estimate</h1><div class="seg"><button onclick="po--;render()">‹ Prev</button><button class="on">'+sd(P.s)+' – '+sd(P.e)+'</button><button onclick="po++;render()">Next ›</button></div>';
+  h+='<div class="card hero"><small>Paycheck deposit · paid '+sd(P.p)+'</small><div class="big">'+$(A.dep)+'</div><small>With your cash tips ('+$(ch)+'): <b>'+$(A.dep+ch)+'</b> · '+L.length+' shift'+(L.length===1?'':'s')+' logged</small></div>';
+  h+='<div class="card">'+r('Hourly wages',$(wg))+r('Card tips (after tip-out)',$(cc))+r('Reported cash tips ('+D.set.rep+'% of checkout cash)',$(rp))+r('Gross taxable pay',$(A.tx),'t')+r('Federal income tax','−'+$(A.fit))+r('CA income tax','−'+$(A.sit))+r('Social Security, Medicare, SDI','−'+$(A.fica))+r('Reported cash tips (not paid on check)','−'+$(rp))+r('Paycheck deposit',$(A.dep),'t')+r('Cash tips you kept','+'+$(ch))+r('Total take-home',$(A.dep+ch),'t')+'</div>';
+  var M=D.shifts.slice(-40),k=Math.round(rates().spw*2);
+  if(po===0&&M.length){
+    var aw=0,ac=0,ar=0,ah=0,m=rem===null?Math.max(0,k-L.length):rem;
+    M.forEach(function(s){aw+=wagePay(s.hrs);ac+=ccNet(s);ar+=(s.ck||0)*D.set.rep/100;ah+=s.cash;});
+    aw/=M.length;ac/=M.length;ar/=M.length;ah/=M.length;
+    var B=chk(wg+m*aw,cc+m*ac,rp+m*ar);
+    h+='<h2>Projected check</h2><div class="card"><div class="row"><span>More shifts you expect this period</span><span><button class="sec" style="width:auto;padding:6px 14px;margin:0 8px" onclick="rem='+Math.max(0,m-1)+';render()">−</button><b>'+m+'</b><button class="sec" style="width:auto;padding:6px 14px;margin:0 8px" onclick="rem='+(m+1)+';render()">+</button></span></div>'+r('Paycheck deposit',$(B.dep),'t')+r('With cash tips',$(B.dep+ch+m*ah),'t')+'<div class="note" style="margin-top:8px">Uses your average shift. The shift count starts at your typical pace ('+k+' per pay period); tap − or + to match your schedule. Estimates follow your paystub method and may be off by a few dollars.</div></div>';
+  }
+  return h;
+}
+function st(a,b){return "<div class=\"st\"><span>"+a+"</span><b>"+b+"</b></div>";}
+
+function vAdd(){
+  var s=edit?D.shifts.filter(function(x){return x.id===edit;})[0]:{date:iso(new Date()),hrs:"",cc:"",cash:""};
+  function f(id,l,v){return "<label>"+l+"<input id=\""+id+"\" type=\"number\" step=\"any\" inputmode=\"decimal\" value=\""+v+"\" placeholder=\"0\"></label>";}
+  return "<h1>"+(edit?"Edit shift":"New shift")+"</h1><div class=\"card\"><label>Date<input id=\"f_d\" type=\"date\" value=\""+s.date+"\"></label>"+hm(s.hrs)+f("f_c","Credit card tips ($)",s.cc)+f("f_x","Cash tips you actually took home ($)",s.cash)+f("f_k","Checkout summary “Cash” line ($)",s.ck||"")+"</div><div id=\"prev\" class=\"card\"></div><button class=\"pri\" onclick=\"saveShift()\">Save shift</button>"+(edit?"<button id=\"delb\" class=\"del\" onclick=\"delShift()\">Delete this shift</button>":"");
+}
+function hm(v){
+  var t=v===""?null:Math.round(v*60),h=t===null?"":Math.floor(t/60),m=t===null?"":t%60;
+  function b(id,l,x,mx){return "<label style=\"flex:1\">"+l+"<input id=\""+id+"\" type=\"number\" inputmode=\"numeric\" min=\"0\" max=\""+mx+"\" value=\""+x+"\" placeholder=\"0\"></label>";}
+  return "<div style=\"display:flex;gap:10px\">"+b("f_h","Hours worked",h,24)+b("f_m","Minutes",m,59)+"</div>";
+}
+function hmt(v){var t=Math.round(v*60);return Math.floor(t/60)+"h "+t%60+"m";}
+function readF(){return{date:document.getElementById("f_d").value,hrs:(parseFloat(document.getElementById("f_h").value)||0)+(parseFloat(document.getElementById("f_m").value)||0)/60,cc:parseFloat(document.getElementById("f_c").value)||0,cash:parseFloat(document.getElementById("f_x").value)||0,ck:parseFloat(document.getElementById("f_k").value)||0};}
+function prev(){
+  var s=readF(),el=document.getElementById("prev");
+  if(!(s.hrs>0)){el.innerHTML="<span class=\"mu\">Enter your hours to see your take-home.</span>";return;}
+  var c=calc(s,rates());
+  function r(a,b,cl){return "<div class=\"row "+(cl||"")+"\"><span>"+a+"</span><span>"+b+"</span></div>";}
+  el.innerHTML=r("Hourly wages",$(c.wp))+r("Card tips (after "+D.set.tipOut+"% tip-out)",$(c.cn))+r("Cash tips",$(s.cash))+r("Gross",$(c.g),"t")+r("Est. taxes","−"+$(c.tax))+r("Take-home",$(c.net),"t")+r("Gross hourly",$(c.hr)+"/hr")+r("Take-home hourly",$(c.nh)+"/hr")+"<div class=\"note\" style=\"margin-top:8px\">"+$(c.rp)+" ("+D.set.rep+"% of checkout cash) is reported on your paystub and taxed there.</div>";
+}
+function bindAdd(){["f_d","f_h","f_m","f_c","f_x","f_k"].forEach(function(i){document.getElementById(i).addEventListener("input",prev);});prev();}
+function saveShift(){
+  var s=readF();
+  if(!s.date||!(s.hrs>0)){msg("Please enter a date and hours worked.");return;}
+  if(edit){var i=D.shifts.findIndex(function(x){return x.id===edit;});s.id=edit;D.shifts[i]=s;}
+  else{s.id=Date.now();D.shifts.push(s);}
+  save();edit=null;go("dash");
+}
+var armed=false;
+function msg(t){var e=document.getElementById("toast");if(!e){e=document.createElement("div");e.id="toast";e.style.cssText="position:fixed;left:16px;right:16px;bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--tx);color:var(--bg);padding:12px 14px;border-radius:12px;font-size:14px;text-align:center;z-index:9";document.body.appendChild(e);}e.textContent=t;e.style.display="block";clearTimeout(e.t);e.t=setTimeout(function(){e.style.display="none";},3500);}
+function delShift(){var b=document.getElementById("delb");if(!armed){armed=true;b.textContent="Tap again to confirm delete";return;}armed=false;D.shifts=D.shifts.filter(function(x){return x.id!==edit;});save();edit=null;go("hist");}
+function editShift(id){edit=id;armed=false;tab="add";render();}
+
+function vHist(){
+  if(!D.shifts.length)return "<h1>History</h1><div class=\"card mu\">Nothing logged yet.</div>";
+  var R=rates();
+  return "<h1>History</h1><div class=\"card\">"+D.shifts.slice().sort(function(a,b){return a.date<b.date?1:-1;}).map(function(s){
+    var c=calc(s,R);
+    return "<div class=\"item\" onclick=\"editShift("+s.id+")\"><div><b>"+fd(s.date)+"</b><br><span class=\"mu\">"+hmt(s.hrs)+" · "+$(c.hr)+"/hr gross</span></div><div style=\"text-align:right\"><b>"+$(c.net)+"</b><br><span class=\"mu\">take-home</span></div></div>";
+  }).join("")+"</div><div class=\"note\">Tap a shift to edit or delete it.</div>";
+}
+
+function vSet(){
+  var R=rates();
+  function f(k,l){return "<label>"+l+"<input type=\"number\" step=\"any\" inputmode=\"decimal\" value=\""+D.set[k]+"\" onchange=\"setv('"+k+"',this.value)\"></label>";}
+  return "<h1>Settings</h1><div class=\"card\">"+f("wage","Hourly wage ($)")+f("tipOut","Card tip-out (%)")+f("rep","% of checkout “Cash” line reported on paystub")+f("spw","Typical shifts per week (used until you’ve logged a few)")+"</div>"+
+  "<h2>Current tax estimates</h2><div class=\"card\"><div class=\"row\"><span>On paycheck (wages, card tips, reported cash)</span><b>"+(D.shifts.length?pct(R.pr):"–")+"</b></div><div class=\"row\"><span>Overall effective rate</span><b>"+(D.shifts.length?pct(R.eff):"–")+"</b></div><div class=\"row\"><span>Avg shifts per week (from your history)</span><b>"+(D.shifts.length>=4?R.spw.toFixed(1):"–")+"</b></div><div class=\"row\"><span>Projected yearly income</span><b>"+(D.shifts.length?$(R.ann):"Log a shift first")+"</b></div><div class=\"note\" style=\"margin-top:8px\">Rates update automatically from your last 40 shifts. Based on 2026 federal and California rules for a single filer with no dependents, including Social Security, Medicare and CA SDI. California daily overtime (over 8 hrs) is included. Taxes are estimated only on income reported through payroll: wages, card tips, and the reported share of the checkout “Cash” line. Cash tips she keeps beyond that are counted in take-home but not taxed here. The federal tips deduction (up to $25,000) is applied to reported tips. These are planning estimates, not tax advice, and won’t match paycheck withholding exactly.</div></div>"+
+  "<h2>Backup</h2><div class=\"card\"><div class=\"note\">Your shifts are saved on this phone only. Last backup: <b>"+bkAgo()+"</b>. Back up now opens the share menu, so you can text the file to someone or save it to Files.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button>"+
+  (pend?"<div class=\"note\" style=\"margin:12px 0 4px;color:var(--tx)\"><b>Replace your "+D.shifts.length+" current shift"+(D.shifts.length===1?"":"s")+" with "+pend.shifts.length+" from this backup?</b> This can’t be undone.</div><button class=\"pri\" onclick=\"bkRestore()\">Yes, restore</button><button class=\"del\" onclick=\"pend=null;render()\">Cancel</button>":
+  "<input id=\"bf\" type=\"file\" accept=\".txt,.json,text/plain,application/json\" style=\"display:none\" onchange=\"bkFile(this)\"><button class=\"sec\" onclick=\"document.getElementById('bf').click()\">Restore from a backup file</button>")+
+  "</div><h2>Backup as text</h2><div class=\"card\"><textarea id=\"bk\" rows=\"4\">"+bkData().replace(/&/g,"&amp;").replace(/</g,"&lt;")+"</textarea><button class=\"sec\" onclick=\"copyBk()\">Copy backup</button><button class=\"sec\" onclick=\"bkLoad(document.getElementById('bk').value)\">Restore from pasted backup</button></div>";
+}
+function setv(k,v){D.set[k]=parseFloat(v)||0;save();render();}
+function copyBk(){var t=document.getElementById("bk");t.select();try{navigator.clipboard.writeText(t.value);}catch(e){document.execCommand("copy");}bkDone("Backup copied.");}
+
+function go(t){tab=t;if(t!=="add")edit=null;if(t==="pay")po=0;rem=null;armed=false;pend=null;render();}
+function render(){
+  var m=document.getElementById("main");
+  m.innerHTML=({dash:vDash,pay:vPay,add:vAdd,hist:vHist,set:vSet})[tab]();
+  document.querySelectorAll("nav button").forEach(function(b){b.classList.toggle("on",b.getAttribute("data-t")===tab);});
+  if(tab==="add")bindAdd();
+  window.scrollTo(0,0);
+}
+load();render();
+</script>
+</body>
+</html>
