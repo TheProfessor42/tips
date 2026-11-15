@@ -17,7 +17,8 @@
 :root{--bg:#f8f3f2;--cd:#fff;--tx:#1c1c1e;--mu:#6b6b70;--ac:#f9b8cf;--on:#5a1836;--at:#b93a70;--a2:#fde9f0;--bd:#ebe3e2;--rd:#c0392b;--y:#e0a83a;--b:#5b8def;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141112;--cd:#1f1a1c;--tx:#f1f1ef;--mu:#a39c9f;--ac:#f7a8c4;--on:#3d0f24;--at:#f7a8c4;--a2:#3a1f2b;--bd:#312a2d;--rd:#ff7b6b}}
 :root[data-theme="dark"]{--bg:#141112;--cd:#1f1a1c;--tx:#f1f1ef;--mu:#a39c9f;--ac:#f7a8c4;--on:#3d0f24;--at:#f7a8c4;--a2:#3a1f2b;--bd:#312a2d;--rd:#ff7b6b}
-*{box-sizing:border-box}
+/* touch-action stops double-tap zoom (pinch zoom still works) */
+*{box-sizing:border-box;touch-action:manipulation}
 html,body{margin:0}
 body{background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:16px 16px 96px;max-width:560px;margin:0 auto}
 h1{font-size:26px;margin:8px 0 14px}
@@ -35,7 +36,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu);
 .seg button.on{background:var(--ac);color:var(--on)}
 label{display:block;font-size:13px;color:var(--mu);margin-bottom:12px}
 input,textarea{display:block;width:100%;margin-top:4px;padding:12px;font:inherit;font-size:20px;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:12px}
-textarea{font-size:12px}
+textarea{font-size:16px}
 input[type="date"]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;width:100%;min-height:52px;text-align:left;font-family:inherit}
 input[type="date"]::-webkit-date-and-time-value{text-align:left;min-height:1.2em}
 button.pri,button.del,button.sec{width:100%;padding:14px;border-radius:14px;border:0;font:inherit;font-weight:700;margin-top:6px}
@@ -295,7 +296,7 @@ function inPer(d){
 
 /* ---------- views ---------- */
 function vDash(){
-  if(!D.shifts.length&&!D.pays.length)return "<h1>Welcome</h1><div class=\"card\">No shifts logged yet. Tap <b>Add shift</b> after your next shift and your dashboard will fill in.</div>";
+  if(!D.shifts.length&&!D.pays.length)return "<h1>Welcome, Kyra</h1><div class=\"card\">No shifts logged yet. Tap <b>Add shift</b> after your next shift and your dashboard will fill in.</div>";
   var R=rates(),all=D.shifts.map(function(s){return{s:s,c:calc(s,R)};});
   var P=all.filter(function(x){return inPer(x.s.date);});
   function sum(k){return P.reduce(function(a,x){return a+x.c[k];},0);}
@@ -355,6 +356,8 @@ function payBars(){
     return '<div class="'+(m[k]===mx?'best':'')+'" style="white-space:nowrap;min-width:0;flex:1 1 0"><u style="height:'+(m[k]/mx*85)+'%"></u><span style="display:flex;justify-content:center;width:0">'+lab+'</span></div>';
   }).join('')+'</div><div class="note" style="margin-top:8px">Each bar is one two-week pay period: the paycheck plus cash tips. Your best so far is '+$(mx)+'.'+(est?' Cash tips on past paychecks are estimates.':'')+'</div></div>';
 }
+// Title row, with a shortcut back to the current pay period when you've paged away from it
+function payHead(t){return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h1>'+t+'</h1>'+(po!==0?'<button class="sec" style="width:auto;padding:8px 14px;margin:0" onclick="po=0;render()">Current</button>':'')+'</div>';}
 function vPay(){
   var P=perRange(po),L=D.shifts.filter(function(s){return s.date>=P.s&&s.date<=P.e;}),wg=0,cc=0,rp=0,ch=0;
   L.forEach(function(s){wg+=wagePay(s.hrs);cc+=ccNet(s);rp+=(s.ck||0)*D.set.rep/100;ch+=s.cash;});
@@ -362,11 +365,11 @@ function vPay(){
   function r(a,b,c){return '<div class="row '+(c||'')+'"><span>'+a+'</span><span>'+b+'</span></div>';}
   if(pp){
     var pc=payCash(pp);
-    return '<h1>Paycheck</h1><div class="seg"><button onclick="po--;render()">‹ Prev</button><button class="on">'+sd(P.s)+' – '+sd(P.e)+'</button><button onclick="po++;render()">Next ›</button></div>'+
+    return payHead('Paycheck')+'<div class="seg"><button onclick="po--;render()">‹ Prev</button><button class="on">'+sd(P.s)+' – '+sd(P.e)+'</button><button onclick="po++;render()">Next ›</button></div>'+
       '<div class="card hero"><small>Paycheck deposit · paid '+sd(pp.p)+'</small><div class="big">'+$(pp.dep)+'</div><small>With cash tips ('+$(pc)+'): <b>'+$(pp.dep+pc)+'</b> · from your paystub</small></div>'+
       '<div class="card">'+r('Hours paid',hmt(pp.hrs))+r('Hourly wages',$(pp.wg))+r('Card tips',$(pp.cc))+r('Taxes and deductions','−'+$(pp.wg+pp.cc-pp.dep))+r('Paycheck deposit',$(pp.dep),'t')+r('Cash tips'+(pc&&typeof pp.mc!=='number'?' (estimate)':''),'+'+$(pc))+r('Total take-home',$(pp.dep+pc),'t')+'</div>';
   }
-  var h='<h1>Paycheck estimate</h1><div class="seg"><button onclick="po--;render()">‹ Prev</button><button class="on">'+sd(P.s)+' – '+sd(P.e)+'</button><button onclick="po++;render()">Next ›</button></div>';
+  var h=payHead('Paycheck estimate')+'<div class="seg"><button onclick="po--;render()">‹ Prev</button><button class="on">'+sd(P.s)+' – '+sd(P.e)+'</button><button onclick="po++;render()">Next ›</button></div>';
   h+='<div class="card hero"><small>Paycheck deposit · paid '+sd(P.p)+'</small><div class="big">'+$(A.dep)+'</div><small>With your cash tips ('+$(ch)+'): <b>'+$(A.dep+ch)+'</b> · '+L.length+' shift'+(L.length===1?'':'s')+' logged</small></div>';
   h+='<div class="card">'+r('Hourly wages',$(wg))+r('Card tips (after tip-out)',$(cc))+r('Reported cash tips ('+D.set.rep+'% of checkout cash)',$(rp))+r('Gross taxable pay',$(A.tx),'t')+r('Federal income tax','−'+$(A.fit))+r('CA income tax','−'+$(A.sit))+r('Social Security, Medicare, SDI','−'+$(A.fica))+r('Reported cash tips (not paid on check)','−'+$(rp))+r('Paycheck deposit',$(A.dep),'t')+r('Cash tips you kept','+'+$(ch))+r('Total take-home',$(A.dep+ch),'t')+'</div>';
   var M=D.shifts.slice(-40),k=Math.round(rates().spw*2);
@@ -443,7 +446,7 @@ function vSet(){
   "<h2>Current tax estimates</h2><div class=\"card\"><div class=\"row\"><span>On paycheck (wages, card tips, reported cash)</span><b>"+(D.shifts.length?pct(R.pr):"–")+"</b></div><div class=\"row\"><span>Overall effective rate</span><b>"+(D.shifts.length?pct(R.eff):"–")+"</b></div><div class=\"row\"><span>Avg shifts per week (from your history)</span><b>"+(D.shifts.length>=4?R.spw.toFixed(1):"–")+"</b></div><div class=\"row\"><span>Projected yearly income</span><b>"+(D.shifts.length?$(R.ann):"Log a shift first")+"</b></div><div class=\"note\" style=\"margin-top:8px\">Rates update automatically from your last 40 shifts. Based on 2026 federal and California rules for a single filer with no dependents, including Social Security, Medicare and CA SDI. California daily overtime (over 8 hrs) is included. Taxes are estimated only on income reported through payroll: wages, card tips, and the reported share of the checkout “Cash” line. Cash tips she keeps beyond that are counted in take-home but not taxed here. The federal tips deduction (up to $25,000) is applied to reported tips. These are planning estimates, not tax advice, and won’t match paycheck withholding exactly.</div></div>"+
   "<h2>Automatic backup</h2><div class=\"card\"><div class=\"note\" id=\"sy_s\">"+syStatus()+"</div>"+
   (syInfo().url?"<button class=\"sec\" onclick=\"syPush()\">Save to the Google Sheet now</button><button class=\"sec\" onclick=\"syRestore()\">Restore from the Google Sheet</button>"+(syInfo().big?"<button class=\"sec\" onclick=\"syPush(true)\">Replace the Google Sheet with this phone’s shifts</button>":"")+"<button id=\"sy_o\" class=\"del\" onclick=\"syOff()\">Turn off automatic backup</button>":
-  "<label style=\"margin-top:10px\">Web app link<input id=\"sy_u\" type=\"url\" autocapitalize=\"off\" autocorrect=\"off\" style=\"font-size:14px\" placeholder=\"https://script.google.com/…/exec\"></label><button class=\"pri\" onclick=\"syConnect()\">Connect</button>")+"</div>"+
+  "<label style=\"margin-top:10px\">Web app link<input id=\"sy_u\" type=\"url\" autocapitalize=\"off\" autocorrect=\"off\" style=\"font-size:16px\" placeholder=\"https://script.google.com/…/exec\"></label><button class=\"pri\" onclick=\"syConnect()\">Connect</button>")+"</div>"+
   "<h2>Past paychecks</h2><div class=\"card\"><div class=\"note\">"+(D.pays.length?D.pays.length+" past paycheck"+(D.pays.length===1?"":"s")+" loaded from paystubs. They count toward your totals, and you can see them in History.":"None loaded. Past paychecks fill in your totals from before you started logging shifts.")+"</div><button class=\"sec\" onclick=\"document.getElementById('bf').click()\">Add past paychecks from a file</button></div>"+
   "<input id=\"bf\" type=\"file\" accept=\".txt,.json,text/plain,application/json\" style=\"display:none\" onchange=\"bkFile(this)\">"+
   "<h2>Manual backup</h2><div class=\"card\"><div class=\"note\">Last manual backup: <b>"+bkAgo()+"</b>. Back up now opens the share menu, so you can text the file to someone or save it to Files.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button>"+
