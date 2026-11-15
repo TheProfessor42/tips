@@ -89,7 +89,7 @@ var BK="backup.v1",pend=null;
 function bkInfo(){try{return JSON.parse(localStorage.getItem(BK))||{};}catch(e){return{};}}
 function sig(){var s=JSON.stringify(D.shifts),h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return h+":"+D.shifts.length;}
 // Due when there are shifts the last backup doesn't have, and it's been a week (or 3 shifts with no backup yet)
-function bkDue(){var b=bkInfo();if(!D.shifts.length||b.sig===sig())return false;return b.t?Date.now()-b.t>=7*864e5:D.shifts.length>=3;}
+function bkDue(){var b=bkInfo(),y=syInfo();if(!D.shifts.length||b.sig===sig()||(y.url&&!y.err&&y.sig===sig()))return false;return b.t?Date.now()-b.t>=7*864e5:D.shifts.length>=3;}
 function bkAgo(){var b=bkInfo();if(!b.t)return "never";var d=Math.floor((Date.now()-b.t)/864e5);return d<1?"today":d===1?"yesterday":d+" days ago";}
 function bkData(){return JSON.stringify({app:"tip-tracker",v:1,saved:new Date().toISOString(),set:D.set,shifts:D.shifts});}
 function bkDone(t){try{localStorage.setItem(BK,JSON.stringify({t:Date.now(),sig:sig()}));}catch(e){}render();msg(t||"Backup saved.");}
@@ -123,7 +123,68 @@ function bkRestore(){
 }
 function save(){
   try{localStorage.setItem(K,JSON.stringify(D.shifts));localStorage.setItem(SK,JSON.stringify(D.set));}catch(e){}
+  syQueue();
 }
+
+/* ---------- automatic backup to a Google Sheet ---------- */
+// The web app link is kept only on this phone (never in the page's code) because anyone with it can read the sheet.
+var SY="sync.v1",syT=null,syBusy=0;
+function syInfo(){try{return JSON.parse(localStorage.getItem(SY))||{};}catch(e){return{};}}
+function sySet(o){var y=syInfo();for(var k in o)y[k]=o[k];try{localStorage.setItem(SY,JSON.stringify(y));}catch(e){}return y;}
+function syState(){return sig()+"|"+JSON.stringify(D.set);}
+function syDirty(){var y=syInfo();return !!y.url&&D.shifts.length>0&&y.st!==syState();}
+function syQueue(){if(!syDirty())return;clearTimeout(syT);syT=setTimeout(syPush,1500);}
+function syJson(r){return r.json();}
+function syWhen(t){return new Date(t).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
+function syStatus(){
+  var y=syInfo();
+  if(!y.url)return "Off. Paste the web app link from your Google Sheet to turn it on.";
+  if(y.err)return "<b style=\"color:var(--rd)\">Not working:</b> "+y.err;
+  if(!y.t)return "<b>On.</b> Your shifts will be saved to the Google Sheet as you log them.";
+  return "<b>On.</b> Last saved to the Google Sheet "+syWhen(y.t)+(syDirty()?" · sending new changes…":"")+".";
+}
+function syAfter(){
+  var a=document.activeElement,typing=a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA");
+  if((tab==="set"||tab==="dash")&&!typing)render(true);
+  else{var e=document.getElementById("sy_s");if(e)e.innerHTML=syStatus();}
+  if(syDirty()&&!syInfo().err)syQueue();
+}
+function syPush(force){
+  var y=syInfo();if(!y.url||!D.shifts.length||(syBusy&&Date.now()-syBusy<45000))return;
+  syBusy=Date.now();
+  var st=syState(),ss=sig(),n=D.shifts.length,body=JSON.parse(bkData());if(force===true)body.force=true;
+  var ok=function(){syBusy=0;sySet({t:Date.now(),st:st,sig:ss,err:"",big:0});syAfter();};
+  var bad=function(m,big){syBusy=0;sySet({err:m,big:big||0});syAfter();};
+  var off="Couldn’t reach the Google Sheet. It will try again the next time you open the app.";
+  fetch(y.url,{method:"POST",body:JSON.stringify(body)}).then(syJson).then(function(j){
+    if(j&&j.ok)ok();else bad((j&&j.error)||"The Google Sheet didn’t accept the backup.",j&&j.remote);
+  },function(){
+    // The save may have gone through even if the reply couldn't be read, so check what the sheet holds
+    fetch(y.url).then(syJson).then(function(j){if(j&&j.ok&&j.count===n)ok();else bad(off);},function(){bad(off);});
+  });
+}
+function syConnect(){
+  var u=(document.getElementById("sy_u").value||"").trim();
+  if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)){msg("That isn’t the web app link. It starts with https://script.google.com and ends with /exec.");return;}
+  msg("Checking the Google Sheet…");
+  fetch(u).then(syJson).then(function(j){
+    if(!j||!j.ok||!Array.isArray(j.shifts))throw 0;
+    sySet({url:u,err:"",st:"",sig:"",t:0,big:0});
+    if(j.shifts.length>D.shifts.length+3){
+      try{pend=bkParse(JSON.stringify(j));}catch(e){pend=null;}
+      render();msg("Connected. The Google Sheet has "+j.shifts.length+" shifts.");
+    }else{render();msg("Connected.");syPush();}
+  }).catch(function(){msg("Couldn’t connect. Check the link, and that the web app’s access is set to Anyone.");});
+}
+function syRestore(){
+  var y=syInfo();if(!y.url)return;
+  msg("Getting your shifts from the Google Sheet…");
+  fetch(y.url).then(syJson).then(function(j){
+    if(!j||!j.ok||!Array.isArray(j.shifts)||!j.shifts.length){msg("The Google Sheet doesn’t have any shifts saved.");return;}
+    pend=bkParse(JSON.stringify(j));render();
+  }).catch(function(){msg("Couldn’t reach the Google Sheet. Check your connection and try again.");});
+}
+function syOff(){var b=document.getElementById("sy_o");if(!armed){armed=true;b.textContent="Tap again to turn off";return;}armed=false;sySet({url:"",err:"",big:0});render();}
 
 /* ---------- money + pay ---------- */
 function $(n){return "$"+n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});}
@@ -179,7 +240,7 @@ function vDash(){
   var hrs=P.reduce(function(a,x){return a+x.s.hrs;},0),g=sum("g"),tax=sum("tax"),net=g-tax;
   var wp=sum("wp"),cn=sum("cn"),ch=P.reduce(function(a,x){return a+x.s.cash;},0);
   var lbl={week:"this week",month:"this month",year:"this year"}[per];
-  var h="<h1>Dashboard</h1>"+(bkDue()?"<div class=\"card\" style=\"border-color:var(--y)\"><b>Time to back up your shifts</b><div class=\"note\" style=\"margin:4px 0 6px\">Last backup: "+bkAgo()+". Two taps keeps your history safe if anything happens to this phone.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button></div>":"")+"<div class=\"seg\">"+["week","month","year"].map(function(p){return "<button class=\""+(p===per?"on":"")+"\" onclick=\"per='"+p+"';render()\">"+p[0].toUpperCase()+p.slice(1)+"</button>";}).join("")+"</div>";
+  var h="<h1>Dashboard</h1>"+(syInfo().err&&syDirty()?"<div class=\"card\" style=\"border-color:var(--rd)\"><b>Automatic backup isn’t working</b><div class=\"note\" style=\"margin-top:4px\">Your shifts are still saved on this phone. Open Settings to see what went wrong.</div></div>":"")+(bkDue()?"<div class=\"card\" style=\"border-color:var(--y)\"><b>Time to back up your shifts</b><div class=\"note\" style=\"margin:4px 0 6px\">Last backup: "+bkAgo()+". Two taps keeps your history safe if anything happens to this phone.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button></div>":"")+"<div class=\"seg\">"+["week","month","year"].map(function(p){return "<button class=\""+(p===per?"on":"")+"\" onclick=\"per='"+p+"';render()\">"+p[0].toUpperCase()+p.slice(1)+"</button>";}).join("")+"</div>";
   h+="<div class=\"card hero\"><small>Estimated take-home "+lbl+"</small><div class=\"big\">"+$(net)+"</div><small>"+P.length+" shift"+(P.length===1?"":"s")+" · "+hmt(hrs)+"</small></div>";
   h+="<div class=\"grid\">"+
    st("Gross earnings",$(g))+st("Est. taxes",$(tax))+
@@ -278,7 +339,10 @@ function vSet(){
   function f(k,l){return "<label>"+l+"<input type=\"number\" step=\"any\" inputmode=\"decimal\" value=\""+D.set[k]+"\" onchange=\"setv('"+k+"',this.value)\"></label>";}
   return "<h1>Settings</h1><div class=\"card\">"+f("wage","Hourly wage ($)")+f("tipOut","Card tip-out (%)")+f("rep","% of checkout “Cash” line reported on paystub")+f("spw","Typical shifts per week (used until you’ve logged a few)")+"</div>"+
   "<h2>Current tax estimates</h2><div class=\"card\"><div class=\"row\"><span>On paycheck (wages, card tips, reported cash)</span><b>"+(D.shifts.length?pct(R.pr):"–")+"</b></div><div class=\"row\"><span>Overall effective rate</span><b>"+(D.shifts.length?pct(R.eff):"–")+"</b></div><div class=\"row\"><span>Avg shifts per week (from your history)</span><b>"+(D.shifts.length>=4?R.spw.toFixed(1):"–")+"</b></div><div class=\"row\"><span>Projected yearly income</span><b>"+(D.shifts.length?$(R.ann):"Log a shift first")+"</b></div><div class=\"note\" style=\"margin-top:8px\">Rates update automatically from your last 40 shifts. Based on 2026 federal and California rules for a single filer with no dependents, including Social Security, Medicare and CA SDI. California daily overtime (over 8 hrs) is included. Taxes are estimated only on income reported through payroll: wages, card tips, and the reported share of the checkout “Cash” line. Cash tips she keeps beyond that are counted in take-home but not taxed here. The federal tips deduction (up to $25,000) is applied to reported tips. These are planning estimates, not tax advice, and won’t match paycheck withholding exactly.</div></div>"+
-  "<h2>Backup</h2><div class=\"card\"><div class=\"note\">Your shifts are saved on this phone only. Last backup: <b>"+bkAgo()+"</b>. Back up now opens the share menu, so you can text the file to someone or save it to Files.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button>"+
+  "<h2>Automatic backup</h2><div class=\"card\"><div class=\"note\" id=\"sy_s\">"+syStatus()+"</div>"+
+  (syInfo().url?"<button class=\"sec\" onclick=\"syPush()\">Save to the Google Sheet now</button><button class=\"sec\" onclick=\"syRestore()\">Restore from the Google Sheet</button>"+(syInfo().big?"<button class=\"sec\" onclick=\"syPush(true)\">Replace the Google Sheet with this phone’s shifts</button>":"")+"<button id=\"sy_o\" class=\"del\" onclick=\"syOff()\">Turn off automatic backup</button>":
+  "<label style=\"margin-top:10px\">Web app link<input id=\"sy_u\" type=\"url\" autocapitalize=\"off\" autocorrect=\"off\" style=\"font-size:14px\" placeholder=\"https://script.google.com/…/exec\"></label><button class=\"pri\" onclick=\"syConnect()\">Connect</button>")+"</div>"+
+  "<h2>Manual backup</h2><div class=\"card\"><div class=\"note\">Last manual backup: <b>"+bkAgo()+"</b>. Back up now opens the share menu, so you can text the file to someone or save it to Files.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button>"+
   (pend?"<div class=\"note\" style=\"margin:12px 0 4px;color:var(--tx)\"><b>Replace your "+D.shifts.length+" current shift"+(D.shifts.length===1?"":"s")+" with "+pend.shifts.length+" from this backup?</b> This can’t be undone.</div><button class=\"pri\" onclick=\"bkRestore()\">Yes, restore</button><button class=\"del\" onclick=\"pend=null;render()\">Cancel</button>":
   "<input id=\"bf\" type=\"file\" accept=\".txt,.json,text/plain,application/json\" style=\"display:none\" onchange=\"bkFile(this)\"><button class=\"sec\" onclick=\"document.getElementById('bf').click()\">Restore from a backup file</button>")+
   "</div><h2>Backup as text</h2><div class=\"card\"><textarea id=\"bk\" rows=\"4\">"+bkData().replace(/&/g,"&amp;").replace(/</g,"&lt;")+"</textarea><button class=\"sec\" onclick=\"copyBk()\">Copy backup</button><button class=\"sec\" onclick=\"bkLoad(document.getElementById('bk').value)\">Restore from pasted backup</button></div>";
@@ -287,14 +351,18 @@ function setv(k,v){D.set[k]=parseFloat(v)||0;save();render();}
 function copyBk(){var t=document.getElementById("bk");t.select();try{navigator.clipboard.writeText(t.value);}catch(e){document.execCommand("copy");}bkDone("Backup copied.");}
 
 function go(t){tab=t;if(t!=="add")edit=null;if(t==="pay")po=0;rem=null;armed=false;pend=null;render();}
-function render(){
+function render(keep){
   var m=document.getElementById("main");
   m.innerHTML=({dash:vDash,pay:vPay,add:vAdd,hist:vHist,set:vSet})[tab]();
   document.querySelectorAll("nav button").forEach(function(b){b.classList.toggle("on",b.getAttribute("data-t")===tab);});
   if(tab==="add")bindAdd();
-  window.scrollTo(0,0);
+  if(keep!==true)window.scrollTo(0,0);
 }
 load();render();
+// Retry any backup that didn't go through (no signal at work, app closed too soon)
+syQueue();
+document.addEventListener("visibilitychange",function(){if(!document.hidden)syQueue();});
+window.addEventListener("online",syQueue);
 </script>
 </body>
 </html>
