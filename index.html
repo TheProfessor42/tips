@@ -74,12 +74,14 @@ nav button.on{color:var(--at)}
 </nav>
 <script>
 var K="shifts.v1",SK="settings.v2";
-var D={shifts:[],set:{wage:18.47,tipOut:6,rep:12,spw:4}};
+var PK="pays.v1";
+var D={shifts:[],pays:[],set:{wage:18.47,tipOut:6,rep:12,spw:4}};
 var tab="dash",edit=null,per="month";
 
 function load(){
   try{var a=localStorage.getItem(K);if(a)D.shifts=JSON.parse(a);
-  var b=localStorage.getItem(SK);if(b)Object.assign(D.set,JSON.parse(b));}catch(e){}
+  var b=localStorage.getItem(SK);if(b)Object.assign(D.set,JSON.parse(b));
+  var c=localStorage.getItem(PK);if(c)D.pays=JSON.parse(c).map(payClean).filter(Boolean);}catch(e){}
   // Ask the phone to keep this app's data even when storage runs low
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
 }
@@ -91,7 +93,7 @@ function sig(){var s=JSON.stringify(D.shifts),h=0;for(var i=0;i<s.length;i++)h=(
 // Due when there are shifts the last backup doesn't have, and it's been a week (or 3 shifts with no backup yet)
 function bkDue(){var b=bkInfo(),y=syInfo();if(!D.shifts.length||b.sig===sig()||(y.url&&!y.err&&y.sig===sig()))return false;return b.t?Date.now()-b.t>=7*864e5:D.shifts.length>=3;}
 function bkAgo(){var b=bkInfo();if(!b.t)return "never";var d=Math.floor((Date.now()-b.t)/864e5);return d<1?"today":d===1?"yesterday":d+" days ago";}
-function bkData(){return JSON.stringify({app:"tip-tracker",v:1,saved:new Date().toISOString(),set:D.set,shifts:D.shifts});}
+function bkData(){return JSON.stringify({app:"tip-tracker",v:1,saved:new Date().toISOString(),set:D.set,shifts:D.shifts,pays:D.pays});}
 function bkDone(t){try{localStorage.setItem(BK,JSON.stringify({t:Date.now(),sig:sig()}));}catch(e){}render();msg(t||"Backup saved.");}
 function bkCopy(txt){
   var no=function(){msg("Couldn’t share. Open Settings and tap Copy backup instead.");};
@@ -109,30 +111,90 @@ function bkParse(txt){
   if(!Array.isArray(L))throw 0;
   L=L.filter(function(s){return s&&typeof s.date==="string"&&typeof s.hrs==="number";});
   L.forEach(function(s,i){if(!s.id)s.id=Date.now()+i;s.cc=+s.cc||0;s.cash=+s.cash||0;});
-  return{shifts:L,set:!Array.isArray(a)&&a.set&&typeof a.set==="object"?a.set:null};
+  return{shifts:L,set:!Array.isArray(a)&&a.set&&typeof a.set==="object"?a.set:null,pays:Array.isArray(a.pays)?a.pays.map(payClean).filter(Boolean):null};
 }
-function bkLoad(txt){try{pend=bkParse(txt);render();}catch(e){pend=null;msg("That doesn’t look like a valid backup.");}}
+function bkLoad(txt){
+  try{
+    var a=JSON.parse(txt);
+    // A paychecks-only file is added to what's here; a full backup replaces it (after a confirmation)
+    if(a&&a.kind==="paychecks"&&Array.isArray(a.pays)){payImport(a.pays.map(payClean).filter(Boolean));return;}
+    pend=bkParse(txt);render();
+  }catch(e){pend=null;msg("That doesn’t look like a valid backup.");}
+}
 function bkFile(el){var f=el.files&&el.files[0];if(!f)return;var r=new FileReader();r.onload=function(){bkLoad(String(r.result));};r.readAsText(f);}
 function bkRestore(){
   if(!pend)return;
   D.shifts=pend.shifts;
+  if(pend.pays&&pend.pays.length)D.pays=pend.pays;
   if(pend.set)["wage","tipOut","rep","spw"].forEach(function(k){if(typeof pend.set[k]==="number")D.set[k]=pend.set[k];});
   pend=null;save();
   try{localStorage.setItem(BK,JSON.stringify({t:Date.now(),sig:sig()}));}catch(e){}
   go("dash");msg("Backup restored.");
 }
 function save(){
-  try{localStorage.setItem(K,JSON.stringify(D.shifts));localStorage.setItem(SK,JSON.stringify(D.set));}catch(e){}
+  try{localStorage.setItem(K,JSON.stringify(D.shifts));localStorage.setItem(SK,JSON.stringify(D.set));localStorage.setItem(PK,JSON.stringify(D.pays));}catch(e){}
   syQueue();
 }
+
+/* ---------- past paychecks (actual figures from paystubs) ---------- */
+// One entry per pay period: s/e period dates, p pay date, hrs paid hours, rate, wg wages, cc card tips paid,
+// rc cash tips reported, ck checkout cash (rc / 12%), dep deposit, mc cash tips kept if she typed it in herself
+var DRE=/^\d{4}-\d{2}-\d{2}$/;
+function payClean(p){
+  if(!p||!DRE.test(p.s)||!DRE.test(p.e)||p.e<p.s||typeof p.dep!=="number")return null;
+  var o={s:p.s,e:p.e,p:DRE.test(p.p)?p.p:p.e,hrs:+p.hrs||0,rate:String(p.rate||"").replace(/[^0-9.–\- ]/g,""),wg:+p.wg||0,cc:+p.cc||0,rc:+p.rc||0,ck:+p.ck||0,dep:p.dep};
+  if(typeof p.mc==="number"&&p.mc>=0)o.mc=p.mc;
+  return o;
+}
+function dn(x){return Math.round(new Date(x+"T12:00:00").getTime()/864e5);}
+// Share of checkout cash she keeps as tips: her own logged shifts once there are 10, until then the one known night ($196 of $618.72)
+function cashRatio(){var a=0,b=0,n=0;D.shifts.forEach(function(s){if(s.ck>0){a+=s.cash;b+=s.ck;n++;}});return n>=10&&b>0?a/b:196/618.72;}
+function payCash(p){return typeof p.mc==="number"?p.mc:p.ck*cashRatio();}
+function payOn(d){for(var i=0;i<D.pays.length;i++)if(d>=D.pays[i].s&&d<=D.pays[i].e)return D.pays[i];return null;}
+function perWin(p){
+  var n=new Date(),t=iso(n);
+  if(p==="year")return[t.slice(0,4)+"-01-01",t.slice(0,4)+"-12-31"];
+  if(p==="month")return[t.slice(0,7)+"-01",iso(new Date(n.getFullYear(),n.getMonth()+1,0))];
+  var ws=new Date(n);ws.setDate(n.getDate()-((n.getDay()+6)%7));return[iso(ws),t];
+}
+// Paycheck totals inside a date window. A pay period that straddles the window counts by its share of days.
+function payAgg(w){
+  var a={n:0,h:0,g:0,t:0,wp:0,cn:0,ch:0};
+  D.pays.forEach(function(p){
+    var o=Math.min(dn(p.e),dn(w[1]))-Math.max(dn(p.s),dn(w[0]))+1;if(o<=0)return;
+    var f=o/(dn(p.e)-dn(p.s)+1),c=payCash(p);
+    a.n++;a.h+=p.hrs*f;a.wp+=p.wg*f;a.cn+=p.cc*f;a.ch+=c*f;a.g+=(p.wg+p.cc+c)*f;a.t+=(p.wg+p.cc-p.dep)*f;
+  });
+  return a;
+}
+function payImport(L){
+  var add=0,skip=0;
+  L.forEach(function(p){
+    if(D.shifts.some(function(s){return s.date>=p.s&&s.date<=p.e;})){skip++;return;}
+    D.pays=D.pays.filter(function(x){return x.s!==p.s;});D.pays.push(p);add++;
+  });
+  save();per="year";go("dash");
+  msg("Added "+add+" past paycheck"+(add===1?"":"s")+"."+(skip?" Skipped "+skip+" that overlap shifts you’ve logged.":""));
+}
+var pe=null;
+function editPay(s){pe=s;armed=false;render();}
+function payGet(){return D.pays.filter(function(p){return p.s===pe;})[0];}
+function payCashSave(){
+  var p=payGet(),v=parseFloat(document.getElementById("p_c").value);if(!p)return;
+  if(!(v>=0))v=0;
+  if(typeof p.mc==="number"||Math.abs(v-Math.round(payCash(p)*100)/100)>=0.005)p.mc=v;
+  save();pe=null;render();msg("Saved.");
+}
+function payCashAuto(){var p=payGet();if(!p)return;delete p.mc;save();render();}
+function payDel(){var b=document.getElementById("delb");if(!armed){armed=true;b.textContent="Tap again to remove";return;}armed=false;D.pays=D.pays.filter(function(p){return p.s!==pe;});save();pe=null;render();}
 
 /* ---------- automatic backup to a Google Sheet ---------- */
 // The web app link is kept only on this phone (never in the page's code) because anyone with it can read the sheet.
 var SY="sync.v1",syT=null,syBusy=0;
 function syInfo(){try{return JSON.parse(localStorage.getItem(SY))||{};}catch(e){return{};}}
 function sySet(o){var y=syInfo();for(var k in o)y[k]=o[k];try{localStorage.setItem(SY,JSON.stringify(y));}catch(e){}return y;}
-function syState(){return sig()+"|"+JSON.stringify(D.set);}
-function syDirty(){var y=syInfo();return !!y.url&&D.shifts.length>0&&y.st!==syState();}
+function syState(){return sig()+"|"+JSON.stringify(D.set)+"|"+JSON.stringify(D.pays);}
+function syDirty(){var y=syInfo();return !!y.url&&(D.shifts.length>0||D.pays.length>0)&&y.st!==syState();}
 function syQueue(){if(!syDirty())return;clearTimeout(syT);syT=setTimeout(syPush,1500);}
 function syJson(r){return r.json();}
 function syWhen(t){return new Date(t).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
@@ -141,7 +203,7 @@ function syStatus(){
   if(!y.url)return "Off. Paste the web app link from your Google Sheet to turn it on.";
   if(y.err)return "<b style=\"color:var(--rd)\">Not working:</b> "+y.err;
   if(!y.t)return "<b>On.</b> Your shifts will be saved to the Google Sheet as you log them.";
-  return "<b>On.</b> Last saved to the Google Sheet "+syWhen(y.t)+(syDirty()?" · sending new changes…":"")+".";
+  return "<b>On.</b> Last saved to the Google Sheet "+syWhen(y.t)+(syDirty()?" · sending new changes…":"")+"."+(y.nop&&D.pays.length?" Past paychecks aren’t being saved there yet, because the script in the Google Sheet needs updating.":"");
 }
 function syAfter(){
   var a=document.activeElement,typing=a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA");
@@ -150,17 +212,17 @@ function syAfter(){
   if(syDirty()&&!syInfo().err)syQueue();
 }
 function syPush(force){
-  var y=syInfo();if(!y.url||!D.shifts.length||(syBusy&&Date.now()-syBusy<45000))return;
+  var y=syInfo();if(!y.url||(!D.shifts.length&&!D.pays.length)||(syBusy&&Date.now()-syBusy<45000))return;
   syBusy=Date.now();
   var st=syState(),ss=sig(),n=D.shifts.length,body=JSON.parse(bkData());if(force===true)body.force=true;
-  var ok=function(){syBusy=0;sySet({t:Date.now(),st:st,sig:ss,err:"",big:0});syAfter();};
+  var ok=function(j){syBusy=0;sySet({t:Date.now(),st:st,sig:ss,err:"",big:0,nop:j&&j.pays===undefined?1:0});syAfter();};
   var bad=function(m,big){syBusy=0;sySet({err:m,big:big||0});syAfter();};
   var off="Couldn’t reach the Google Sheet. It will try again the next time you open the app.";
   fetch(y.url,{method:"POST",body:JSON.stringify(body)}).then(syJson).then(function(j){
-    if(j&&j.ok)ok();else bad((j&&j.error)||"The Google Sheet didn’t accept the backup.",j&&j.remote);
+    if(j&&j.ok)ok(j);else bad((j&&j.error)||"The Google Sheet didn’t accept the backup.",j&&j.remote);
   },function(){
     // The save may have gone through even if the reply couldn't be read, so check what the sheet holds
-    fetch(y.url).then(syJson).then(function(j){if(j&&j.ok&&j.count===n)ok();else bad(off);},function(){bad(off);});
+    fetch(y.url).then(syJson).then(function(j){if(j&&j.ok&&j.count===n)ok(j);else bad(off);},function(){bad(off);});
   });
 }
 function syConnect(){
@@ -170,9 +232,9 @@ function syConnect(){
   fetch(u).then(syJson).then(function(j){
     if(!j||!j.ok||!Array.isArray(j.shifts))throw 0;
     sySet({url:u,err:"",st:"",sig:"",t:0,big:0});
-    if(j.shifts.length>D.shifts.length+3){
+    if(j.shifts.length>D.shifts.length+3||(Array.isArray(j.pays)&&j.pays.length&&!D.pays.length&&!D.shifts.length)){
       try{pend=bkParse(JSON.stringify(j));}catch(e){pend=null;}
-      render();msg("Connected. The Google Sheet has "+j.shifts.length+" shifts.");
+      render();msg("Connected. The Google Sheet has a backup you can restore.");
     }else{render();msg("Connected.");syPush();}
   }).catch(function(){msg("Couldn’t connect. Check the link, and that the web app’s access is set to Anyone.");});
 }
@@ -233,22 +295,27 @@ function inPer(d){
 
 /* ---------- views ---------- */
 function vDash(){
-  if(!D.shifts.length)return "<h1>Welcome</h1><div class=\"card\">No shifts logged yet. Tap <b>Add shift</b> after your next shift and your dashboard will fill in.</div>";
+  if(!D.shifts.length&&!D.pays.length)return "<h1>Welcome</h1><div class=\"card\">No shifts logged yet. Tap <b>Add shift</b> after your next shift and your dashboard will fill in.</div>";
   var R=rates(),all=D.shifts.map(function(s){return{s:s,c:calc(s,R)};});
   var P=all.filter(function(x){return inPer(x.s.date);});
   function sum(k){return P.reduce(function(a,x){return a+x.c[k];},0);}
-  var hrs=P.reduce(function(a,x){return a+x.s.hrs;},0),g=sum("g"),tax=sum("tax"),net=g-tax;
+  var hrs=P.reduce(function(a,x){return a+x.s.hrs;},0),g=sum("g"),tax=sum("tax"),sn=g-tax;
   var wp=sum("wp"),cn=sum("cn"),ch=P.reduce(function(a,x){return a+x.s.cash;},0);
+  // add the past paychecks that fall in this period
+  var Q=payAgg(perWin(per));hrs+=Q.h;g+=Q.g;tax+=Q.t;wp+=Q.wp;cn+=Q.cn;ch+=Q.ch;
+  var net=g-tax;
   var lbl={week:"this week",month:"this month",year:"this year"}[per];
   var h="<h1>Dashboard</h1>"+(syInfo().err&&syDirty()?"<div class=\"card\" style=\"border-color:var(--rd)\"><b>Automatic backup isn’t working</b><div class=\"note\" style=\"margin-top:4px\">Your shifts are still saved on this phone. Open Settings to see what went wrong.</div></div>":"")+(bkDue()?"<div class=\"card\" style=\"border-color:var(--y)\"><b>Time to back up your shifts</b><div class=\"note\" style=\"margin:4px 0 6px\">Last backup: "+bkAgo()+". Two taps keeps your history safe if anything happens to this phone.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button></div>":"")+"<div class=\"seg\">"+["week","month","year"].map(function(p){return "<button class=\""+(p===per?"on":"")+"\" onclick=\"per='"+p+"';render()\">"+p[0].toUpperCase()+p.slice(1)+"</button>";}).join("")+"</div>";
-  h+="<div class=\"card hero\"><small>Estimated take-home "+lbl+"</small><div class=\"big\">"+$(net)+"</div><small>"+P.length+" shift"+(P.length===1?"":"s")+" · "+hmt(hrs)+"</small></div>";
+  h+="<div class=\"card hero\"><small>Estimated take-home "+lbl+"</small><div class=\"big\">"+$(net)+"</div><small>"+P.length+" shift"+(P.length===1?"":"s")+(Q.n?" · "+Q.n+" past paycheck"+(Q.n===1?"":"s"):"")+" · "+hmt(hrs)+"</small></div>";
   h+="<div class=\"grid\">"+
    st("Gross earnings",$(g))+st("Est. taxes",$(tax))+
    st("Hourly (gross)",hrs?$(g/hrs)+"/hr":"–")+st("Hourly (take-home)",hrs?$(net/hrs)+"/hr":"–")+
-   st("Avg per shift",P.length?$(net/P.length):"–")+st("Cash tips kept",$(ch))+"</div>";
+   st("Avg per shift",P.length?$(sn/P.length):"–")+st("Cash tips kept",$(ch))+"</div>";
   h+=tbl(R);
   var tot=wp+cn+ch||1;
   h+="<h2>Where it comes from</h2><div class=\"card\"><div class=\"bar\"><span style=\"width:"+wp/tot*100+"%;background:var(--ac)\"></span><span style=\"width:"+cn/tot*100+"%;background:var(--y)\"></span><span style=\"width:"+ch/tot*100+"%;background:var(--b)\"></span></div><div class=\"lg\"><span><i style=\"background:var(--ac)\"></i>Wages "+$(wp)+"</span><span><i style=\"background:var(--y)\"></i>Card tips "+$(cn)+"</span><span><i style=\"background:var(--b)\"></i>Cash "+$(ch)+"</span></div></div>";
+  h+=payBars();
+  if(!all.length)return h+"<div class=\"note\">Best days and shift-by-shift stats will appear once you log your first shift.</div>";
   var wd=[0,0,0,0,0,0,0],wn=[0,0,0,0,0,0,0];
   all.forEach(function(x){var d=(new Date(x.s.date+"T12:00:00").getDay()+6)%7;wd[d]+=x.c.net;wn[d]++;});
   var av=wd.map(function(v,i){return wn[i]?v/wn[i]:0;}),mx=Math.max.apply(null,av)||1;
@@ -266,18 +333,39 @@ function perRange(o){var a=new Date(PA+'T12:00:00'),t=new Date();t.setHours(12,0
 function sd(x){return new Date(x+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});}
 // Mirrors her paystub: annualize x26, standard deduction, 2026 brackets; FICA + SDI = 8.95%
 function chk(wg,cc,rp){var tx=wg+cc+rp,fica=tx*.0895,fit=prog(Math.max(0,tx*26-16100),FED)/26,sit=tx*26<=20000?0:1.1*prog(tx*26-5706,CA25)/26,tax=fica+fit+sit;return{tx:tx,fica:fica,fit:fit,sit:sit,tax:tax,dep:tx-tax-rp};}
-function agg(p,R){var o=per;per=p;var L=D.shifts.filter(function(s){return inPer(s.date);});per=o;var a={n:L.length,h:0,g:0,t:0,cn:0,ch:0};L.forEach(function(s){var c=calc(s,R);a.h+=s.hrs;a.g+=c.g;a.t+=c.tax;a.cn+=c.cn;a.ch+=s.cash;});a.net=a.g-a.t;return a;}
+function agg(p,R){var o=per;per=p;var L=D.shifts.filter(function(s){return inPer(s.date);});per=o;var a={n:L.length,h:0,g:0,t:0,cn:0,ch:0};L.forEach(function(s){var c=calc(s,R);a.h+=s.hrs;a.g+=c.g;a.t+=c.tax;a.cn+=c.cn;a.ch+=s.cash;});a.sn=a.g-a.t;var Q=payAgg(perWin(p));a.pn=Q.n;a.h+=Q.h;a.g+=Q.g;a.t+=Q.t;a.cn+=Q.cn;a.ch+=Q.ch;a.net=a.g-a.t;return a;}
 function tbl(R){
   var C=['week','month','year'].map(function(p){return agg(p,R);});
   function row(l,f){return '<tr><td>'+l+'</td>'+C.map(function(a){return '<td>'+f(a)+'</td>';}).join('')+'</tr>';}
   return '<h2>Week, month and year to date</h2><div class="card"><table class="tb"><tr><th></th><th>WTD</th><th>MTD</th><th>YTD</th></tr>'+
-   row('Shifts',function(a){return a.n;})+row('Hours',function(a){return a.h?hmt(a.h):'–';})+row('Gross',function(a){return $(a.g);})+row('Est. taxes',function(a){return $(a.t);})+row('Take-home',function(a){return '<b>'+$(a.net)+'</b>';})+row('Card tips',function(a){return $(a.cn);})+row('Cash tips',function(a){return $(a.ch);})+row('Gross / hr',function(a){return a.h?$(a.g/a.h):'–';})+row('Take-home / hr',function(a){return a.h?$(a.net/a.h):'–';})+row('Avg / shift',function(a){return a.n?$(a.net/a.n):'–';})+'</table></div>';
+   row('Shifts',function(a){return a.n;})+(D.pays.length?row('Past paychecks',function(a){return a.pn;}):'')+row('Hours',function(a){return a.h?hmt(a.h):'–';})+row('Gross',function(a){return $(a.g);})+row('Est. taxes',function(a){return $(a.t);})+row('Take-home',function(a){return '<b>'+$(a.net)+'</b>';})+row('Card tips',function(a){return $(a.cn);})+row('Cash tips',function(a){return $(a.ch);})+row('Gross / hr',function(a){return a.h?$(a.g/a.h):'–';})+row('Take-home / hr',function(a){return a.h?$(a.net/a.h):'–';})+row('Avg / shift',function(a){return a.n?$(a.sn/a.n):'–';})+'</table></div>';
+}
+// One bar per two-week pay period: actual paychecks from paystubs, then periods estimated from logged shifts
+function payBars(){
+  var m={},est=false;
+  D.pays.forEach(function(p){var c=payCash(p);if(c&&typeof p.mc!=="number")est=true;m[p.s]=p.dep+c;});
+  var by={};
+  D.shifts.forEach(function(s){var a=new Date(PA+'T12:00:00');a.setDate(a.getDate()+Math.floor((dn(s.date)-dn(PA))/14)*14);var k=iso(a);(by[k]=by[k]||[]).push(s);});
+  Object.keys(by).forEach(function(k){if(k in m)return;var wg=0,cc=0,rp=0,ch=0;by[k].forEach(function(s){wg+=wagePay(s.hrs);cc+=ccNet(s);rp+=(s.ck||0)*D.set.rep/100;ch+=s.cash;});m[k]=chk(wg,cc,rp).dep+ch;});
+  var L=Object.keys(m).sort().slice(-26);
+  if(L.length<2)return '';
+  var mx=Math.max.apply(null,L.map(function(k){return m[k];}))||1,lm='';
+  return '<h2>Take-home by paycheck</h2><div class="card"><div class="bars" style="gap:3px">'+L.map(function(k){
+    var mo=new Date(k+'T12:00:00').toLocaleDateString('en-US',{month:'short'}),lab=mo!==lm?mo:'&nbsp;';lm=mo;
+    return '<div class="'+(m[k]===mx?'best':'')+'" style="white-space:nowrap;min-width:0;flex:1 1 0"><u style="height:'+(m[k]/mx*85)+'%"></u><span style="display:flex;justify-content:center;width:0">'+lab+'</span></div>';
+  }).join('')+'</div><div class="note" style="margin-top:8px">Each bar is one two-week pay period: the paycheck plus cash tips. Your best so far is '+$(mx)+'.'+(est?' Cash tips on past paychecks are estimates.':'')+'</div></div>';
 }
 function vPay(){
   var P=perRange(po),L=D.shifts.filter(function(s){return s.date>=P.s&&s.date<=P.e;}),wg=0,cc=0,rp=0,ch=0;
   L.forEach(function(s){wg+=wagePay(s.hrs);cc+=ccNet(s);rp+=(s.ck||0)*D.set.rep/100;ch+=s.cash;});
-  var A=chk(wg,cc,rp);
+  var A=chk(wg,cc,rp),pp=D.pays.filter(function(p){return p.s===P.s;})[0];
   function r(a,b,c){return '<div class="row '+(c||'')+'"><span>'+a+'</span><span>'+b+'</span></div>';}
+  if(pp){
+    var pc=payCash(pp);
+    return '<h1>Paycheck</h1><div class="seg"><button onclick="po--;render()">‹ Prev</button><button class="on">'+sd(P.s)+' – '+sd(P.e)+'</button><button onclick="po++;render()">Next ›</button></div>'+
+      '<div class="card hero"><small>Paycheck deposit · paid '+sd(pp.p)+'</small><div class="big">'+$(pp.dep)+'</div><small>With cash tips ('+$(pc)+'): <b>'+$(pp.dep+pc)+'</b> · from your paystub</small></div>'+
+      '<div class="card">'+r('Hours paid',hmt(pp.hrs))+r('Hourly wages',$(pp.wg))+r('Card tips',$(pp.cc))+r('Taxes and deductions','−'+$(pp.wg+pp.cc-pp.dep))+r('Paycheck deposit',$(pp.dep),'t')+r('Cash tips'+(pc&&typeof pp.mc!=='number'?' (estimate)':''),'+'+$(pc))+r('Total take-home',$(pp.dep+pc),'t')+'</div>';
+  }
   var h='<h1>Paycheck estimate</h1><div class="seg"><button onclick="po--;render()">‹ Prev</button><button class="on">'+sd(P.s)+' – '+sd(P.e)+'</button><button onclick="po++;render()">Next ›</button></div>';
   h+='<div class="card hero"><small>Paycheck deposit · paid '+sd(P.p)+'</small><div class="big">'+$(A.dep)+'</div><small>With your cash tips ('+$(ch)+'): <b>'+$(A.dep+ch)+'</b> · '+L.length+' shift'+(L.length===1?'':'s')+' logged</small></div>';
   h+='<div class="card">'+r('Hourly wages',$(wg))+r('Card tips (after tip-out)',$(cc))+r('Reported cash tips ('+D.set.rep+'% of checkout cash)',$(rp))+r('Gross taxable pay',$(A.tx),'t')+r('Federal income tax','−'+$(A.fit))+r('CA income tax','−'+$(A.sit))+r('Social Security, Medicare, SDI','−'+$(A.fica))+r('Reported cash tips (not paid on check)','−'+$(rp))+r('Paycheck deposit',$(A.dep),'t')+r('Cash tips you kept','+'+$(ch))+r('Total take-home',$(A.dep+ch),'t')+'</div>';
@@ -316,6 +404,7 @@ function bindAdd(){["f_d","f_h","f_m","f_c","f_x","f_k"].forEach(function(i){doc
 function saveShift(){
   var s=readF();
   if(!s.date||!(s.hrs>0)){msg("Please enter a date and hours worked.");return;}
+  var pc=payOn(s.date);if(pc){msg("That date is already covered by your "+sd(pc.s)+" – "+sd(pc.e)+" paycheck in History.");return;}
   if(edit){var i=D.shifts.findIndex(function(x){return x.id===edit;});s.id=edit;D.shifts[i]=s;}
   else{s.id=Date.now();D.shifts.push(s);}
   save();edit=null;go("dash");
@@ -326,12 +415,25 @@ function delShift(){var b=document.getElementById("delb");if(!armed){armed=true;
 function editShift(id){edit=id;armed=false;tab="add";render();}
 
 function vHist(){
-  if(!D.shifts.length)return "<h1>History</h1><div class=\"card mu\">Nothing logged yet.</div>";
-  var R=rates();
-  return "<h1>History</h1><div class=\"card\">"+D.shifts.slice().sort(function(a,b){return a.date<b.date?1:-1;}).map(function(s){
+  function r(a,b,c){return "<div class=\"row "+(c||"")+"\"><span>"+a+"</span><span>"+b+"</span></div>";}
+  var p=pe&&payGet();
+  if(p){
+    var c=payCash(p),man=typeof p.mc==="number";
+    return "<h1>Past paycheck</h1><div class=\"card\">"+r("Pay period",sd(p.s)+" – "+sd(p.e))+r("Paid",sd(p.p))+r("Hours paid",hmt(p.hrs))+r("Hourly rate","$"+p.rate)+r("Hourly wages",$(p.wg))+r("Card tips",$(p.cc))+r("Taxes and deductions","−"+$(p.wg+p.cc-p.dep))+r("Paycheck deposit",$(p.dep),"t")+"</div>"+
+      "<div class=\"card\"><label>Cash tips you kept this period ($)<input id=\"p_c\" type=\"number\" step=\"any\" inputmode=\"decimal\" value=\""+(Math.round(c*100)/100)+"\"></label><div class=\"note\">"+(man?"You entered this amount.":p.ck?"Estimated from the cash reported on this paystub. Change it if you remember the real number.":"No cash tips were reported on this paystub. Add an amount if you kept some.")+"</div></div>"+
+      "<button class=\"pri\" onclick=\"payCashSave()\">Save</button>"+(man?"<button class=\"sec\" onclick=\"payCashAuto()\">Go back to the estimate</button>":"")+"<button class=\"sec\" onclick=\"pe=null;render()\">Back</button><button id=\"delb\" class=\"del\" onclick=\"payDel()\">Remove this paycheck</button>";
+  }
+  if(!D.shifts.length&&!D.pays.length)return "<h1>History</h1><div class=\"card mu\">Nothing logged yet.</div>";
+  var R=rates(),h="<h1>History</h1>";
+  if(D.shifts.length)h+="<div class=\"card\">"+D.shifts.slice().sort(function(a,b){return a.date<b.date?1:-1;}).map(function(s){
     var c=calc(s,R);
     return "<div class=\"item\" onclick=\"editShift("+s.id+")\"><div><b>"+fd(s.date)+"</b><br><span class=\"mu\">"+hmt(s.hrs)+" · "+$(c.hr)+"/hr gross</span></div><div style=\"text-align:right\"><b>"+$(c.net)+"</b><br><span class=\"mu\">take-home</span></div></div>";
   }).join("")+"</div><div class=\"note\">Tap a shift to edit or delete it.</div>";
+  if(D.pays.length)h+="<h2>Past paychecks</h2><div class=\"card\">"+D.pays.slice().sort(function(a,b){return a.s<b.s?1:-1;}).map(function(p){
+    var c=payCash(p);
+    return "<div class=\"item\" onclick=\"editPay('"+p.s+"')\"><div><b>"+sd(p.s)+" – "+sd(p.e)+"</b><br><span class=\"mu\">"+hmt(p.hrs)+" · $"+p.rate+"/hr</span></div><div style=\"text-align:right\"><b>"+$(p.dep+c)+"</b><br><span class=\"mu\">"+(c?"incl. "+(typeof p.mc==="number"?"":"about ")+"$"+Math.round(c)+" cash":"paycheck")+"</span></div></div>";
+  }).join("")+"</div><div class=\"note\">From your paystubs. Tap one to change its cash tips or remove it.</div>";
+  return h;
 }
 
 function vSet(){
@@ -342,15 +444,17 @@ function vSet(){
   "<h2>Automatic backup</h2><div class=\"card\"><div class=\"note\" id=\"sy_s\">"+syStatus()+"</div>"+
   (syInfo().url?"<button class=\"sec\" onclick=\"syPush()\">Save to the Google Sheet now</button><button class=\"sec\" onclick=\"syRestore()\">Restore from the Google Sheet</button>"+(syInfo().big?"<button class=\"sec\" onclick=\"syPush(true)\">Replace the Google Sheet with this phone’s shifts</button>":"")+"<button id=\"sy_o\" class=\"del\" onclick=\"syOff()\">Turn off automatic backup</button>":
   "<label style=\"margin-top:10px\">Web app link<input id=\"sy_u\" type=\"url\" autocapitalize=\"off\" autocorrect=\"off\" style=\"font-size:14px\" placeholder=\"https://script.google.com/…/exec\"></label><button class=\"pri\" onclick=\"syConnect()\">Connect</button>")+"</div>"+
+  "<h2>Past paychecks</h2><div class=\"card\"><div class=\"note\">"+(D.pays.length?D.pays.length+" past paycheck"+(D.pays.length===1?"":"s")+" loaded from paystubs. They count toward your totals, and you can see them in History.":"None loaded. Past paychecks fill in your totals from before you started logging shifts.")+"</div><button class=\"sec\" onclick=\"document.getElementById('bf').click()\">Add past paychecks from a file</button></div>"+
+  "<input id=\"bf\" type=\"file\" accept=\".txt,.json,text/plain,application/json\" style=\"display:none\" onchange=\"bkFile(this)\">"+
   "<h2>Manual backup</h2><div class=\"card\"><div class=\"note\">Last manual backup: <b>"+bkAgo()+"</b>. Back up now opens the share menu, so you can text the file to someone or save it to Files.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button>"+
   (pend?"<div class=\"note\" style=\"margin:12px 0 4px;color:var(--tx)\"><b>Replace your "+D.shifts.length+" current shift"+(D.shifts.length===1?"":"s")+" with "+pend.shifts.length+" from this backup?</b> This can’t be undone.</div><button class=\"pri\" onclick=\"bkRestore()\">Yes, restore</button><button class=\"del\" onclick=\"pend=null;render()\">Cancel</button>":
-  "<input id=\"bf\" type=\"file\" accept=\".txt,.json,text/plain,application/json\" style=\"display:none\" onchange=\"bkFile(this)\"><button class=\"sec\" onclick=\"document.getElementById('bf').click()\">Restore from a backup file</button>")+
+  "<button class=\"sec\" onclick=\"document.getElementById('bf').click()\">Restore from a backup file</button>")+
   "</div><h2>Backup as text</h2><div class=\"card\"><textarea id=\"bk\" rows=\"4\">"+bkData().replace(/&/g,"&amp;").replace(/</g,"&lt;")+"</textarea><button class=\"sec\" onclick=\"copyBk()\">Copy backup</button><button class=\"sec\" onclick=\"bkLoad(document.getElementById('bk').value)\">Restore from pasted backup</button></div>";
 }
 function setv(k,v){D.set[k]=parseFloat(v)||0;save();render();}
 function copyBk(){var t=document.getElementById("bk");t.select();try{navigator.clipboard.writeText(t.value);}catch(e){document.execCommand("copy");}bkDone("Backup copied.");}
 
-function go(t){tab=t;if(t!=="add")edit=null;if(t==="pay")po=0;rem=null;armed=false;pend=null;render();}
+function go(t){tab=t;if(t!=="add")edit=null;if(t==="pay")po=0;rem=null;armed=false;pend=null;pe=null;render();}
 function render(keep){
   var m=document.getElementById("main");
   m.innerHTML=({dash:vDash,pay:vPay,add:vAdd,hist:vHist,set:vSet})[tab]();
