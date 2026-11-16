@@ -616,6 +616,8 @@ load();render();
 syQueue();
 document.addEventListener("visibilitychange",function(){if(!document.hidden)syQueue();});
 window.addEventListener("online",syQueue);
+// Offline support: keeps a copy of the app on the phone so it still opens with no signal (see sw.js)
+try{if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){});});}catch(e){}
 </script>
 </body>
 </html>
