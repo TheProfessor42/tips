@@ -61,6 +61,17 @@ button.sec{background:var(--a2);color:var(--at)}
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--cd);border-top:1px solid var(--bd);padding:6px 8px calc(8px + env(safe-area-inset-bottom,0px))}
 nav button{flex:1;border:0;background:none;color:var(--mu);font:inherit;font-size:12px;font-weight:600;padding:8px 0}
 nav button.on{color:var(--at)}
+/* Piggy Bank */
+.pig{display:flex;flex-direction:column;align-items:center;border:0;background:none;color:var(--at);font:inherit;font-size:13px;font-weight:700;padding:0;line-height:1.1;margin-top:4px}
+.pig svg{width:36px;height:36px}
+.pbtn{display:flex;gap:8px}
+.pbtn button{flex:1;margin-top:0;padding:14px 6px}
+.cnt{display:grid;grid-template-columns:52px 1fr 92px;gap:10px;align-items:center;margin-bottom:8px;font-weight:700}
+.cnt input{margin:0}
+.cnt span:last-child{text-align:right}
+.bars .pb{flex-direction:row;align-items:flex-end;gap:2px;width:100%}
+.bars .pb u{flex:1}
+.bars .pb u.o{background:var(--rr);opacity:.9}
 .note{font-size:12px;color:var(--mu);line-height:1.5}
 .tb{width:100%;border-collapse:collapse;font-size:13px}
 .tb th{color:var(--mu);font-weight:600;text-align:right;padding:6px 3px;font-size:12px}
@@ -79,14 +90,15 @@ nav button.on{color:var(--at)}
 </nav>
 <script>
 var K="shifts.v1",SK="settings.v2";
-var PK="pays.v1";
-var D={shifts:[],pays:[],set:{wage:18.47,tipOut:6,rep:12,spw:4}};
+var PK="pays.v1",CSH="cash.v1";
+var D={shifts:[],pays:[],cash:[],set:{wage:18.47,tipOut:6,rep:12,spw:4}};
 var tab="dash",edit=null,per="month",rf="all";
 
 function load(){
   try{var a=localStorage.getItem(K);if(a)D.shifts=JSON.parse(a);
   var b=localStorage.getItem(SK);if(b)Object.assign(D.set,JSON.parse(b));
-  var c=localStorage.getItem(PK);if(c)D.pays=JSON.parse(c).map(payClean).filter(Boolean);}catch(e){}
+  var c=localStorage.getItem(PK);if(c)D.pays=JSON.parse(c).map(payClean).filter(Boolean);
+  var d=localStorage.getItem(CSH);if(d)D.cash=JSON.parse(d).filter(pgOk);}catch(e){}
   // Ask the phone to keep this app's data even when storage runs low
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
 }
@@ -94,11 +106,11 @@ function load(){
 /* ---------- backup ---------- */
 var BK="backup.v1",pend=null;
 function bkInfo(){try{return JSON.parse(localStorage.getItem(BK))||{};}catch(e){return{};}}
-function sig(){var s=JSON.stringify(D.shifts),h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return h+":"+D.shifts.length;}
+function sig(){var s=JSON.stringify(D.shifts)+(D.cash.length?JSON.stringify(D.cash):""),h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return h+":"+D.shifts.length;}
 // Due when there are shifts the last backup doesn't have, and it's been a week (or 3 shifts with no backup yet)
 function bkDue(){var b=bkInfo(),y=syInfo();if(!D.shifts.length||b.sig===sig()||(y.url&&!y.err&&y.sig===sig()))return false;return b.t?Date.now()-b.t>=7*864e5:D.shifts.length>=3;}
 function bkAgo(){var b=bkInfo();if(!b.t)return "never";var d=Math.floor((Date.now()-b.t)/864e5);return d<1?"today":d===1?"yesterday":d+" days ago";}
-function bkData(){return JSON.stringify({app:"tip-tracker",v:1,saved:new Date().toISOString(),set:D.set,shifts:D.shifts,pays:D.pays});}
+function bkData(){return JSON.stringify({app:"tip-tracker",v:1,saved:new Date().toISOString(),set:D.set,shifts:D.shifts,pays:D.pays,cash:D.cash});}
 function bkDone(t){try{localStorage.setItem(BK,JSON.stringify({t:Date.now(),sig:sig()}));}catch(e){}render();msg(t||"Backup saved.");}
 function bkCopy(txt){
   var no=function(){msg("Couldn’t share. Open Settings and tap Copy backup instead.");};
@@ -116,7 +128,7 @@ function bkParse(txt){
   if(!Array.isArray(L))throw 0;
   L=L.filter(function(s){return s&&typeof s.date==="string"&&typeof s.hrs==="number";});
   L.forEach(function(s,i){if(!s.id)s.id=Date.now()+i;s.cc=+s.cc||0;s.cash=+s.cash||0;});
-  return{shifts:L,set:!Array.isArray(a)&&a.set&&typeof a.set==="object"?a.set:null,pays:Array.isArray(a.pays)?a.pays.map(payClean).filter(Boolean):null};
+  return{shifts:L,set:!Array.isArray(a)&&a.set&&typeof a.set==="object"?a.set:null,pays:Array.isArray(a.pays)?a.pays.map(payClean).filter(Boolean):null,cash:Array.isArray(a.cash)?a.cash.filter(pgOk):null};
 }
 function bkLoad(txt){
   try{
@@ -131,13 +143,14 @@ function bkRestore(){
   if(!pend)return;
   D.shifts=pend.shifts;
   if(pend.pays&&pend.pays.length)D.pays=pend.pays;
+  if(pend.cash&&pend.cash.length)D.cash=pend.cash;
   if(pend.set)["wage","tipOut","rep","spw"].forEach(function(k){if(typeof pend.set[k]==="number")D.set[k]=pend.set[k];});
   pend=null;save();
   try{localStorage.setItem(BK,JSON.stringify({t:Date.now(),sig:sig()}));}catch(e){}
   go("dash");msg("Backup restored.");
 }
 function save(){
-  try{localStorage.setItem(K,JSON.stringify(D.shifts));localStorage.setItem(SK,JSON.stringify(D.set));localStorage.setItem(PK,JSON.stringify(D.pays));}catch(e){}
+  try{localStorage.setItem(K,JSON.stringify(D.shifts));localStorage.setItem(SK,JSON.stringify(D.set));localStorage.setItem(PK,JSON.stringify(D.pays));localStorage.setItem(CSH,JSON.stringify(D.cash));}catch(e){}
   syQueue();
 }
 
@@ -199,8 +212,8 @@ function payDel(){var b=document.getElementById("delb");if(!armed){armed=true;b.
 var SY="sync.v1",syT=null,syBusy=0;
 function syInfo(){try{return JSON.parse(localStorage.getItem(SY))||{};}catch(e){return{};}}
 function sySet(o){var y=syInfo();for(var k in o)y[k]=o[k];try{localStorage.setItem(SY,JSON.stringify(y));}catch(e){}return y;}
-function syState(){return sig()+"|"+JSON.stringify(D.set)+"|"+JSON.stringify(D.pays);}
-function syDirty(){var y=syInfo();return !!y.url&&(D.shifts.length>0||D.pays.length>0)&&y.st!==syState();}
+function syState(){return sig()+"|"+JSON.stringify(D.set)+"|"+JSON.stringify(D.pays)+(D.cash.length?"|"+JSON.stringify(D.cash):"");}
+function syDirty(){var y=syInfo();return !!y.url&&(D.shifts.length>0||D.pays.length>0||D.cash.length>0)&&y.st!==syState();}
 function syQueue(){if(!syDirty())return;clearTimeout(syT);syT=setTimeout(syPush,1500);}
 function syJson(r){return r.json();}
 function syWhen(t){return new Date(t).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});}
@@ -316,7 +329,7 @@ function vDash(){
   var Q=payAgg(perWin(per));hrs+=Q.h;g+=Q.g;tax+=Q.t;wp+=Q.wp;cn+=Q.cn;ch+=Q.ch;
   var net=g-tax;
   var lbl={week:"this week",month:"this month",year:"this year"}[per];
-  var h="<h1>Dashboard</h1>"+(syInfo().err&&syDirty()?"<div class=\"card\" style=\"border-color:var(--rd)\"><b>Automatic backup isn’t working</b><div class=\"note\" style=\"margin-top:4px\">Your shifts are still saved on this phone. Open Settings to see what went wrong.</div></div>":"")+(bkDue()?"<div class=\"card\" style=\"border-color:var(--y)\"><b>Time to back up your shifts</b><div class=\"note\" style=\"margin:4px 0 6px\">Last backup: "+bkAgo()+". Two taps keeps your history safe if anything happens to this phone.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button></div>":"")+"<div class=\"seg\">"+["week","month","year"].map(function(p){return "<button class=\""+(p===per?"on":"")+"\" onclick=\"per='"+p+"';render()\">"+p[0].toUpperCase()+p.slice(1)+"</button>";}).join("")+"</div>";
+  var h="<div style=\"display:flex;justify-content:space-between;align-items:center\"><h1>Dashboard</h1>"+pigBtn()+"</div>"+(syInfo().err&&syDirty()?"<div class=\"card\" style=\"border-color:var(--rd)\"><b>Automatic backup isn’t working</b><div class=\"note\" style=\"margin-top:4px\">Your shifts are still saved on this phone. Open Settings to see what went wrong.</div></div>":"")+(bkDue()?"<div class=\"card\" style=\"border-color:var(--y)\"><b>Time to back up your shifts</b><div class=\"note\" style=\"margin:4px 0 6px\">Last backup: "+bkAgo()+". Two taps keeps your history safe if anything happens to this phone.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button></div>":"")+"<div class=\"seg\">"+["week","month","year"].map(function(p){return "<button class=\""+(p===per?"on":"")+"\" onclick=\"per='"+p+"';render()\">"+p[0].toUpperCase()+p.slice(1)+"</button>";}).join("")+"</div>";
   h+="<select aria-label=\"Role\" onchange=\"rf=this.value;render()\" style=\"font-size:16px;min-height:44px;padding:8px 36px 8px 12px;margin:0 0 12px\">"+["all"].concat(RK).map(function(k){return "<option value=\""+k+"\""+(k===rf?" selected":"")+">"+(k==="all"?"All roles":ROLES[k].n)+"</option>";}).join("")+"</select>";
   h+="<div class=\"card hero\"><small>Estimated take-home "+lbl+"</small><div class=\"big\">"+$(net)+"</div><small>"+P.length+" shift"+(P.length===1?"":"s")+(Q.n?" · "+Q.n+" past paycheck"+(Q.n===1?"":"s"):"")+" · "+hmt(hrs)+"</small></div>";
   h+="<div class=\"grid\">"+
@@ -483,12 +496,110 @@ function vSet(){
 function setv(k,v){D.set[k]=parseFloat(v)||0;save();render();}
 function copyBk(){var t=document.getElementById("bk");t.select();try{navigator.clipboard.writeText(t.value);}catch(e){document.execCommand("copy");}bkDone("Backup copied.");}
 
-function go(t){tab=t;if(t!=="add")edit=null;if(t==="pay")po=0;rem=null;armed=false;pend=null;pe=null;render();}
+/* ---------- Piggy Bank: cash on hand (safe + wallet) ---------- */
+// D.cash entries: {id: time logged, t: "out" | "in" | "count", amt, date, d: count minus what the app expected}
+// The balance starts at the latest count. Shifts and entries count toward it if they're dated after
+// the count day, or on the count day but logged after the count (so whichever was entered first wins).
+var pv=null,pp="month",DEN=[100,50,20,10,5,1];
+function pgOk(x){return x&&typeof x.id==="number"&&(x.t==="out"||x.t==="in"||x.t==="count")&&typeof x.amt==="number"&&typeof x.date==="string";}
+function pgAfter(date,id,c){return date>c.date||(date===c.date&&id>c.id);}
+function pgCounts(){return D.cash.filter(function(x){return x.t==="count";}).sort(function(a,b){return a.id-b.id;});}
+function pgBal(){
+  var C=pgCounts(),c=C[C.length-1];if(!c)return null;var b=c.amt;
+  D.shifts.forEach(function(s){if(s.cash&&pgAfter(s.date,s.id,c))b+=s.cash;});
+  D.cash.forEach(function(x){if(x.t!=="count"&&pgAfter(x.date,x.id,c))b+=x.t==="in"?x.amt:-x.amt;});
+  return b;
+}
+// Everything since the first count, newest first: shift cash, cash added, withdrawals, counts
+function pgEvents(){
+  var f=pgCounts()[0];if(!f)return[];
+  var E=D.shifts.filter(function(s){return s.cash>0&&pgAfter(s.date,s.id,f);}).map(function(s){return{k:"shift",id:s.id,date:s.date,amt:s.cash};});
+  D.cash.forEach(function(x){E.push({k:x.t,id:x.id,date:x.date,amt:x.amt,d:x.d});});
+  return E.sort(function(a,b){return a.date!==b.date?(a.date<b.date?1:-1):b.id-a.id;});
+}
+function pgIn(d){var o=per;per=pp;var r=inPer(d);per=o;return r;}
+function pgMoney(n){return (n<0?"−$":"$")+Math.round(Math.abs(n)).toLocaleString("en-US");}
+var PIG='<svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="17" cy="19" rx="11" ry="8.5"/><rect x="27.5" y="15.5" width="4.5" height="6.5" rx="2"/><path d="M10 12.5l1-5.5 5 4.2"/><path d="M13 27v4M22 27v4"/><path d="M14 13.5h6"/><path d="M6 18c-2.5 0-3.5-2.5-1.5-3.5"/><circle cx="23" cy="16" r=".9" fill="currentColor"/></svg>';
+function pigBtn(){var b=pgBal();return '<button class="pig" onclick="go(\'pig\')" aria-label="Piggy Bank">'+PIG+'<span>'+(b===null?"Start":pgMoney(b))+'</span></button>';}
+function pgHead(t,back){return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h1>'+t+'</h1><button class="sec" style="width:auto;padding:8px 14px;margin:0" onclick="'+back+'">'+(back.indexOf("go(")===0?"✕ Close":"Cancel")+'</button></div>';}
+function vPig(){
+  if(pv==="count")return vCount();
+  if(pv!==null)return vTx();
+  var h=pgHead("Piggy Bank","go('dash')"),b=pgBal(),C=pgCounts();
+  if(b===null)return h+'<div class="card hero"><small>Cash on hand</small><div class="big" style="font-size:26px">Count your safe to start</div><small>Count the cash in your safe and wallet once. After that, cash from every shift you log is added automatically.</small></div><button class="pri" onclick="pv=\'count\';render()">Count my cash</button>';
+  var c=C[C.length-1];
+  h+='<div class="card hero"><small>Cash on hand (safe + wallet)</small><div class="big">'+$(b)+'</div><small>Last counted '+fd(c.date)+'</small></div>';
+  if(b<0)h+='<div class="card" style="border-color:var(--rd)"><b>Time to recount</b><div class="note" style="margin-top:4px">Your balance is below $0, so some cash was probably spent without being logged. Count your cash to fix it.</div></div>';
+  h+='<div class="pbtn"><button class="pri" onclick="pv=\'out\';render()">Withdraw</button><button class="sec" onclick="pv=\'in\';render()">Add cash</button><button class="sec" onclick="pv=\'count\';render()">Recount</button></div>';
+  h+='<div class="seg" style="margin-top:14px">'+["week","month","year"].map(function(p){return '<button class="'+(p===pp?"on":"")+'" onclick="pp=\''+p+'\';render(true)">'+p[0].toUpperCase()+p.slice(1)+'</button>';}).join("")+'</div>';
+  var E=pgEvents(),ci=0,co=0;
+  E.forEach(function(e){if(!pgIn(e.date))return;if(e.k==="shift"||e.k==="in")ci+=e.amt;else if(e.k==="out")co+=e.amt;});
+  h+='<div class="grid">'+st("Cash in",$(ci))+st("Withdrawn",$(co))+'</div><div class="card"><div class="row t" style="border:0;margin:0;padding:0"><span>Net '+{week:"this week",month:"this month",year:"this year"}[pp]+'</span><span style="color:'+(ci-co<0?"var(--rd)":"inherit")+'">'+(ci-co<0?"−":"+")+$(Math.abs(ci-co))+'</span></div></div>';
+  // chart: last 8 weeks, last 6 months, or this year's months
+  var n=new Date(),K=[],lab={};
+  if(pp==="week"){var m=new Date(n);m.setDate(n.getDate()-((n.getDay()+6)%7));for(var i=7;i>=0;i--){var w=new Date(m);w.setDate(m.getDate()-7*i);var k=iso(w);K.push(k);lab[k]=(w.getMonth()+1)+"/"+w.getDate();}}
+  else{var cnt=pp==="month"?6:n.getMonth()+1;for(var j=cnt-1;j>=0;j--){var d=new Date(n.getFullYear(),n.getMonth()-j,1),k2=iso(d).slice(0,7);K.push(k2);lab[k2]=d.toLocaleDateString("en-US",{month:"short"});}}
+  function key(ds){if(pp!=="week")return ds.slice(0,7);var d=new Date(ds+"T12:00:00");d.setDate(d.getDate()-((d.getDay()+6)%7));return iso(d);}
+  var I={},O={};E.forEach(function(e){var k=key(e.date);if(e.k==="shift"||e.k==="in")I[k]=(I[k]||0)+e.amt;else if(e.k==="out")O[k]=(O[k]||0)+e.amt;});
+  var mx=Math.max.apply(null,K.map(function(k){return Math.max(I[k]||0,O[k]||0);}))||1;
+  h+='<h2>In and out</h2><div class="card"><div class="bars">'+K.map(function(k){return '<div><div class="pb"><u style="height:'+((I[k]||0)/mx*90)+'%"></u><u class="o" style="height:'+((O[k]||0)/mx*90)+'%"></u></div>'+lab[k]+'</div>';}).join("")+'</div><div class="lg" style="margin-top:8px"><span><i style="background:var(--ac)"></i>Cash in</span><span><i style="background:var(--rr)"></i>Withdrawn</span></div></div>';
+  h+='<h2>Recent activity</h2><div class="card">'+E.slice(0,30).map(function(e){
+    var t={shift:"Shift cash",in:"Added cash",out:"Withdrew",count:"Counted"}[e.k],sub=fd(e.date),v;
+    if(e.k==="count"){v=$(e.amt);if(typeof e.d==="number")sub+=" · "+(Math.abs(e.d)<.005?"matched":e.d<0?pgMoney(-e.d)+" unaccounted for":pgMoney(e.d)+" more than expected");}
+    else v=(e.k==="out"?"−":"+")+$(e.amt);
+    return '<div class="item" onclick="'+(e.k==="shift"?"editShift("+e.id+")":"pv="+e.id+";armed=false;render()")+'"><div><b>'+t+'</b><br><span class="mu">'+sub+'</span></div><b style="color:'+(e.k==="out"?"var(--rd)":"inherit")+'">'+v+'</b></div>';
+  }).join("")+'</div><div class="note">Tap an entry to change or delete it.</div>';
+  return h;
+}
+// Withdraw / add cash / edit an entry
+function vTx(){
+  var x=typeof pv==="number"?D.cash.filter(function(y){return y.id===pv;})[0]:{t:pv,amt:"",date:iso(new Date())};
+  if(!x){pv=null;return vPig();}
+  var ed=typeof pv==="number",ct=x.t==="count";
+  var t=ct?"Edit count":x.t==="out"?(ed?"Edit withdrawal":"Withdraw cash"):(ed?"Edit cash added":"Add cash");
+  var h=pgHead(t,"pv=null;render()")+'<div class="card"><label>Amount ($)<input id="p_a" type="number" step="any" inputmode="decimal" placeholder="0" value="'+x.amt+'"></label>';
+  if(!ed)h+='<div class="pbtn" style="margin-bottom:12px">'+[20,50,100].map(function(v){return '<button class="sec" onclick="document.getElementById(\'p_a\').value='+v+'">$'+v+'</button>';}).join("")+'</div>';
+  if(!ct)h+='<label>Date<input id="p_d" type="date" value="'+x.date+'"></label>';
+  h+='</div><button class="pri" onclick="pgSave()">Save</button>'+(ed?'<button id="delb" class="del" onclick="pgDel()">Delete this entry</button>':'');
+  return h;
+}
+function pgSave(){
+  var a=parseFloat(document.getElementById("p_a").value),de=document.getElementById("p_d"),dt=de?de.value:null;
+  if(!(a>=0)||(pv!=="count"&&a===0&&typeof pv!=="number")){msg("Please enter an amount.");return;}
+  if(de&&!dt){msg("Please pick a date.");return;}
+  if(typeof pv==="number"){var x=D.cash.filter(function(y){return y.id===pv;})[0];if(x.t==="count"&&typeof x.d==="number")x.d+=a-x.amt;x.amt=a;if(dt)x.date=dt;}
+  else D.cash.push({id:Date.now(),t:pv,amt:a,date:dt});
+  var t=pv;pv=null;save();render();msg(t==="out"?"Withdrawn. Cash on hand: "+$(pgBal()):"Saved.");
+}
+function pgDel(){var b=document.getElementById("delb");if(!armed){armed=true;b.textContent="Tap again to confirm delete";return;}armed=false;var id=pv;D.cash=D.cash.filter(function(y){return y.id!==id;});pv=null;save();render();msg("Deleted.");}
+// Count the cash by bill
+function vCount(){
+  var b=pgBal();
+  return pgHead("Count your cash","pv=null;render()")+'<div class="card"><div class="note" style="margin-bottom:12px">Enter how many of each bill you have, in your safe and wallet. Count a $2 bill as two $1 bills.</div>'+
+    DEN.map(function(d){return '<div class="cnt"><span>$'+d+'</span><input id="q_'+d+'" type="number" inputmode="numeric" min="0" placeholder="0"><span id="l_'+d+'">$0</span></div>';}).join("")+
+    '<div class="row t"><span>Total</span><span id="c_t">$0.00</span></div>'+(b!==null?'<div class="row"><span class="mu">App expected</span><span class="mu">'+$(b)+'</span></div><div class="row"><span></span><span id="c_d" class="mu"></span></div>':'')+
+    '</div><button class="pri" onclick="pgCount()">Save count</button>';
+}
+function pgTot(){var t=0,any=false;DEN.forEach(function(d){var v=document.getElementById("q_"+d).value;if(v!=="")any=true;t+=d*(parseInt(v,10)||0);});return{t:t,any:any};}
+function pgCalc(){
+  var T=pgTot(),b=pgBal();
+  DEN.forEach(function(d){document.getElementById("l_"+d).textContent="$"+(d*(parseInt(document.getElementById("q_"+d).value,10)||0)).toLocaleString("en-US");});
+  document.getElementById("c_t").textContent=$(T.t);
+  var e=document.getElementById("c_d");if(e&&b!==null){var df=T.t-b;e.textContent=!T.any?"":Math.abs(df)<.005?"Matches exactly":df<0?pgMoney(-df)+" unaccounted for":pgMoney(df)+" more than expected";}
+}
+function bindCount(){DEN.forEach(function(d){document.getElementById("q_"+d).addEventListener("input",pgCalc);});}
+function pgCount(){
+  var T=pgTot(),b=pgBal();if(!T.any){msg("Enter how many of each bill you counted.");return;}
+  D.cash.push({id:Date.now(),t:"count",amt:T.t,date:iso(new Date()),d:b===null?null:T.t-b});
+  pv=null;save();render();msg("Count saved. Cash on hand: "+$(T.t));
+}
+function go(t){tab=t;pv=null;if(t!=="add")edit=null;if(t==="pay")po=0;rem=null;armed=false;pend=null;pe=null;render();}
 function render(keep){
   var m=document.getElementById("main");
-  m.innerHTML=({dash:vDash,pay:vPay,add:vAdd,hist:vHist,set:vSet})[tab]();
+  m.innerHTML=({dash:vDash,pay:vPay,add:vAdd,hist:vHist,set:vSet,pig:vPig})[tab]();
   document.querySelectorAll("nav button").forEach(function(b){b.classList.toggle("on",b.getAttribute("data-t")===tab);});
   if(tab==="add")bindAdd();
+  if(tab==="pig"&&pv==="count")bindCount();
   if(keep!==true)window.scrollTo(0,0);
 }
 load();render();
