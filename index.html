@@ -319,7 +319,7 @@ function inPer(d){
 
 /* ---------- views ---------- */
 function vDash(){
-  if(!D.shifts.length&&!D.pays.length)return "<h1>Welcome, Kyra</h1><div class=\"card\">No shifts logged yet. Tap <b>Add shift</b> after your next shift and your dashboard will fill in.</div>";
+  if(!D.shifts.length&&!D.pays.length)return "<div style=\"display:flex;justify-content:space-between;align-items:center\"><h1>Welcome, Kyra</h1>"+pigBtn()+"</div><div class=\"card\">No shifts logged yet. Tap <b>Add shift</b> after your next shift and your dashboard will fill in.</div>";
   var R=rates(),all=D.shifts.filter(rok).map(function(s){return{s:s,c:calc(s,R)};});
   var P=all.filter(function(x){return inPer(x.s.date);});
   function sum(k){return P.reduce(function(a,x){return a+x.c[k];},0);}
