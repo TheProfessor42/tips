@@ -222,7 +222,16 @@ function syStatus(){
   if(!y.url)return "Off. Paste the web app link from your Google Sheet to turn it on.";
   if(y.err)return "<b style=\"color:var(--rd)\">Not working:</b> "+y.err;
   if(!y.t)return "<b>On.</b> Your shifts will be saved to the Google Sheet as you log them.";
-  return "<b>On.</b> Last saved to the Google Sheet "+syWhen(y.t)+(syDirty()?" · sending new changes…":"")+"."+(y.nop&&D.pays.length?" Past paychecks aren’t being saved there yet, because the script in the Google Sheet needs updating.":"");
+  return "<b>On.</b> Last saved to the Google Sheet "+syWhen(y.t)+(syDirty()?" · sending new changes…":"")+"."+(y.nop&&D.pays.length?" Past paychecks aren’t being saved there yet, because the script in the Google Sheet needs updating.":"")+(y.noc&&!y.nop&&D.cash.length?" Piggy Bank cash isn’t being saved there yet, because the script in the Google Sheet needs updating.":"");
+}
+// Small "Backed up 2 hours ago" line for the Dashboard (only when the Google Sheet backup is on and working)
+function syAgo(t){var m=Math.floor((Date.now()-t)/6e4);return m<1?"just now":m<60?m+" min ago":m<1440?Math.floor(m/60)+" hour"+(m<120?"":"s")+" ago":Math.floor(m/1440)+" day"+(m<2880?"":"s")+" ago";}
+function syLine(){
+  var y=syInfo();if(!y.url||y.err)return "";
+  var d=syDirty(),late=d&&y.t&&Date.now()-y.t>3*864e5,s=y.t?"Backed up "+syAgo(y.t):"Backup is on";
+  if(d&&!late)s+=" · saving…";
+  if(y.noc&&D.cash.length)s+=" · cash not backed up yet";
+  return "<div class=\"note\" style=\"margin:-8px 0 12px;color:"+(late||(y.noc&&D.cash.length)?"var(--rd)":"var(--mu)")+"\">"+(late?"⚠ ":"✓ ")+s+"</div>";
 }
 function syAfter(){
   var a=document.activeElement,typing=a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA");
@@ -231,10 +240,10 @@ function syAfter(){
   if(syDirty()&&!syInfo().err)syQueue();
 }
 function syPush(force){
-  var y=syInfo();if(!y.url||(!D.shifts.length&&!D.pays.length)||(syBusy&&Date.now()-syBusy<45000))return;
+  var y=syInfo();if(!y.url||(!D.shifts.length&&!D.pays.length&&!D.cash.length)||(syBusy&&Date.now()-syBusy<45000))return;
   syBusy=Date.now();
   var st=syState(),ss=sig(),n=D.shifts.length,body=JSON.parse(bkData());if(force===true)body.force=true;
-  var ok=function(j){syBusy=0;sySet({t:Date.now(),st:st,sig:ss,err:"",big:0,nop:j&&j.pays===undefined?1:0});syAfter();};
+  var ok=function(j){syBusy=0;sySet({t:Date.now(),st:st,sig:ss,err:"",big:0,nop:j&&j.pays===undefined?1:0,noc:j&&j.cash===undefined?1:0});syAfter();};
   var bad=function(m,big){syBusy=0;sySet({err:m,big:big||0});syAfter();};
   var off="Couldn’t reach the Google Sheet. It will try again the next time you open the app.";
   fetch(y.url,{method:"POST",body:JSON.stringify(body)}).then(syJson).then(function(j){
@@ -319,7 +328,7 @@ function inPer(d){
 
 /* ---------- views ---------- */
 function vDash(){
-  if(!D.shifts.length&&!D.pays.length)return "<div style=\"display:flex;justify-content:space-between;align-items:center\"><h1>Welcome, Kyra</h1>"+pigBtn()+"</div><div class=\"card\">No shifts logged yet. Tap <b>Add shift</b> after your next shift and your dashboard will fill in.</div>";
+  if(!D.shifts.length&&!D.pays.length)return "<div style=\"display:flex;justify-content:space-between;align-items:center\"><h1>Welcome</h1>"+pigBtn()+"</div><div class=\"card\">No shifts logged yet. Tap <b>Add shift</b> after your next shift and your dashboard will fill in.</div>";
   var R=rates(),all=D.shifts.filter(rok).map(function(s){return{s:s,c:calc(s,R)};});
   var P=all.filter(function(x){return inPer(x.s.date);});
   function sum(k){return P.reduce(function(a,x){return a+x.c[k];},0);}
@@ -329,7 +338,7 @@ function vDash(){
   var Q=payAgg(perWin(per));hrs+=Q.h;g+=Q.g;tax+=Q.t;wp+=Q.wp;cn+=Q.cn;ch+=Q.ch;
   var net=g-tax;
   var lbl={week:"this week",month:"this month",year:"this year"}[per];
-  var h="<div style=\"display:flex;justify-content:space-between;align-items:center\"><h1>Dashboard</h1>"+pigBtn()+"</div>"+(syInfo().err&&syDirty()?"<div class=\"card\" style=\"border-color:var(--rd)\"><b>Automatic backup isn’t working</b><div class=\"note\" style=\"margin-top:4px\">Your shifts are still saved on this phone. Open Settings to see what went wrong.</div></div>":"")+(bkDue()?"<div class=\"card\" style=\"border-color:var(--y)\"><b>Time to back up your shifts</b><div class=\"note\" style=\"margin:4px 0 6px\">Last backup: "+bkAgo()+". Two taps keeps your history safe if anything happens to this phone.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button></div>":"")+"<div class=\"seg\">"+["week","month","year"].map(function(p){return "<button class=\""+(p===per?"on":"")+"\" onclick=\"per='"+p+"';render()\">"+p[0].toUpperCase()+p.slice(1)+"</button>";}).join("")+"</div>";
+  var h="<div style=\"display:flex;justify-content:space-between;align-items:center\"><h1>Dashboard</h1>"+pigBtn()+"</div>"+syLine()+(syInfo().err&&syDirty()?"<div class=\"card\" style=\"border-color:var(--rd)\"><b>Automatic backup isn’t working</b><div class=\"note\" style=\"margin-top:4px\">Your shifts are still saved on this phone. Open Settings to see what went wrong.</div></div>":"")+(bkDue()?"<div class=\"card\" style=\"border-color:var(--y)\"><b>Time to back up your shifts</b><div class=\"note\" style=\"margin:4px 0 6px\">Last backup: "+bkAgo()+". Two taps keeps your history safe if anything happens to this phone.</div><button class=\"pri\" onclick=\"backupNow()\">Back up now</button></div>":"")+"<div class=\"seg\">"+["week","month","year"].map(function(p){return "<button class=\""+(p===per?"on":"")+"\" onclick=\"per='"+p+"';render()\">"+p[0].toUpperCase()+p.slice(1)+"</button>";}).join("")+"</div>";
   h+="<select aria-label=\"Role\" onchange=\"rf=this.value;render()\" style=\"font-size:16px;min-height:44px;padding:8px 36px 8px 12px;margin:0 0 12px\">"+["all"].concat(RK).map(function(k){return "<option value=\""+k+"\""+(k===rf?" selected":"")+">"+(k==="all"?"All roles":ROLES[k].n)+"</option>";}).join("")+"</select>";
   h+="<div class=\"card hero\"><small>Estimated take-home "+lbl+"</small><div class=\"big\">"+$(net)+"</div><small>"+P.length+" shift"+(P.length===1?"":"s")+(Q.n?" · "+Q.n+" past paycheck"+(Q.n===1?"":"s"):"")+" · "+hmt(hrs)+"</small></div>";
   h+="<div class=\"grid\">"+
