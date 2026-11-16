@@ -1,0 +1,6 @@
+# Private files: never upload to the public repo
+CLAUDE.md
+past-paychecks.txt
+google-sheet-backup-script.txt
+*.local.*
+.claude/
