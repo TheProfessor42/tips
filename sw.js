@@ -3,7 +3,7 @@
 // With signal, the app always loads the newest version from the internet (waiting up to 3 seconds),
 // and the saved copy is only used when the internet is missing or too slow.
 // VERSION must change whenever an app file changes. The test suite checks this and can stamp it.
-var VERSION = "tt-8a79bd9d";
+var VERSION = "tt-0c74b974";
 var FILES = ["./", "index.html", "manifest.webmanifest", "apple-touch-icon.png", "icon-192.png", "icon-512.png"];
 var WAIT = 3000;
 

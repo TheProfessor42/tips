@@ -167,7 +167,11 @@ function payClean(p){
 function dn(x){return Math.round(new Date(x+"T12:00:00").getTime()/864e5);}
 // Share of checkout cash she keeps as tips: her own logged Server shifts once there are 10, until then the one known night ($196 of $618.72)
 function cashRatio(){var a=0,b=0,n=0;D.shifts.forEach(function(s){if(s.ck>0&&rl(s)==="server"){a+=s.cash;b+=s.ck;n++;}});return n>=10&&b>0?a/b:196/618.72;}
-function payCash(p){return typeof p.mc==="number"?p.mc:p.ck*cashRatio();}
+// Cash kept for a paycheck: her real cash on nights she logged, plus a ratio estimate for the checkout cash she didn't log
+function payLog(p){return D.shifts.filter(function(s){return s.date>=p.s&&s.date<=p.e;});}
+function payCash(p){if(typeof p.mc==="number")return p.mc;var c=0,k=0;payLog(p).forEach(function(s){c+=s.cash||0;k+=s.ck||0;});return c+Math.max(0,p.ck-k)*cashRatio();}
+// A shift whose date a paycheck covers: the paystub already counts its money (only under "All roles", where paychecks show)
+function cov(s){return rf==="all"&&!!payOn(s.date);}
 function payOn(d){for(var i=0;i<D.pays.length;i++)if(d>=D.pays[i].s&&d<=D.pays[i].e)return D.pays[i];return null;}
 function perWin(p){
   var n=new Date(),t=iso(n);
@@ -187,13 +191,13 @@ function payAgg(w){
   return a;
 }
 function payImport(L){
-  var add=0,skip=0;
+  // Shifts logged inside a paycheck's dates stay (History, best days, Piggy Bank); the paystub's money replaces theirs in totals
+  var add=0;
   L.forEach(function(p){
-    if(D.shifts.some(function(s){return s.date>=p.s&&s.date<=p.e;})){skip++;return;}
     D.pays=D.pays.filter(function(x){return x.s!==p.s;});D.pays.push(p);add++;
   });
   save();per="year";go("dash");
-  msg("Added "+add+" past paycheck"+(add===1?"":"s")+"."+(skip?" Skipped "+skip+" that overlap shifts you’ve logged.":""));
+  msg("Added "+add+" past paycheck"+(add===1?"":"s")+".");
 }
 var pe=null;
 function editPay(s){pe=s;armed=false;render();}
@@ -330,7 +334,7 @@ function inPer(d){
 function vDash(){
   if(!D.shifts.length&&!D.pays.length)return "<div style=\"display:flex;justify-content:space-between;align-items:center\"><h1>Welcome</h1>"+pigBtn()+"</div><div class=\"card\">No shifts logged yet. Tap <b>Add shift</b> after your next shift and your dashboard will fill in.</div>";
   var R=rates(),all=D.shifts.filter(rok).map(function(s){return{s:s,c:calc(s,R)};});
-  var P=all.filter(function(x){return inPer(x.s.date);});
+  var P=all.filter(function(x){return inPer(x.s.date)&&!cov(x.s);});
   function sum(k){return P.reduce(function(a,x){return a+x.c[k];},0);}
   var hrs=P.reduce(function(a,x){return a+x.s.hrs;},0),g=sum("g"),tax=sum("tax"),sn=g-tax;
   var wp=sum("wp"),cn=sum("cn"),ch=P.reduce(function(a,x){return a+x.s.cash;},0);
@@ -371,7 +375,7 @@ function perRange(o){var a=new Date(PA+'T12:00:00'),t=new Date();t.setHours(12,0
 function sd(x){return new Date(x+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});}
 // Mirrors her paystub: annualize x26, standard deduction, 2026 brackets; FICA + SDI = 8.95%
 function chk(wg,cc,rp){var tx=wg+cc+rp,fica=tx*.0895,fit=prog(Math.max(0,tx*26-16100),FED)/26,sit=tx*26<=20000?0:1.1*prog(tx*26-5706,CA25)/26,tax=fica+fit+sit;return{tx:tx,fica:fica,fit:fit,sit:sit,tax:tax,dep:tx-tax-rp};}
-function agg(p,R){var o=per;per=p;var L=D.shifts.filter(function(s){return inPer(s.date)&&rok(s);});per=o;var a={n:L.length,h:0,g:0,t:0,cn:0,ch:0};L.forEach(function(s){var c=calc(s,R);a.h+=s.hrs;a.g+=c.g;a.t+=c.tax;a.cn+=c.cn;a.ch+=s.cash;});a.sn=a.g-a.t;var Q=payAgg(perWin(p));a.pn=Q.n;a.h+=Q.h;a.g+=Q.g;a.t+=Q.t;a.cn+=Q.cn;a.ch+=Q.ch;a.net=a.g-a.t;return a;}
+function agg(p,R){var o=per;per=p;var L=D.shifts.filter(function(s){return inPer(s.date)&&rok(s)&&!cov(s);});per=o;var a={n:L.length,h:0,g:0,t:0,cn:0,ch:0};L.forEach(function(s){var c=calc(s,R);a.h+=s.hrs;a.g+=c.g;a.t+=c.tax;a.cn+=c.cn;a.ch+=s.cash;});a.sn=a.g-a.t;var Q=payAgg(perWin(p));a.pn=Q.n;a.h+=Q.h;a.g+=Q.g;a.t+=Q.t;a.cn+=Q.cn;a.ch+=Q.ch;a.net=a.g-a.t;return a;}
 function tbl(R){
   var C=['week','month','year'].map(function(p){return agg(p,R);});
   function row(l,f){return '<tr><td>'+l+'</td>'+C.map(function(a){return '<td>'+f(a)+'</td>';}).join('')+'</tr>';}
@@ -413,7 +417,7 @@ function vPay(){
     var pc=payCash(pp);
     return payHead('Paycheck')+'<div class="seg"><button onclick="po--;render()">‹ Prev</button><button class="on">'+sd(P.s)+' – '+sd(P.e)+'</button><button onclick="po++;render()">Next ›</button></div>'+
       '<div class="card hero"><small>Paycheck deposit · paid '+sd(pp.p)+'</small><div class="big">'+$(pp.dep)+'</div><small>With cash tips ('+$(pc)+'): <b>'+$(pp.dep+pc)+'</b> · from your paystub</small></div>'+
-      '<div class="card">'+r('Hours paid',hmt(pp.hrs))+r('Hourly wages',$(pp.wg))+r('Card tips',$(pp.cc))+r('Taxes and deductions','−'+$(pp.wg+pp.cc-pp.dep))+r('Paycheck deposit',$(pp.dep),'t')+r('Cash tips'+(pc&&typeof pp.mc!=='number'?' (estimate)':''),'+'+$(pc))+r('Total take-home',$(pp.dep+pc),'t')+'</div>';
+      '<div class="card">'+r('Hours paid',hmt(pp.hrs))+r('Hourly wages',$(pp.wg))+r('Card tips',$(pp.cc))+r('Taxes and deductions','−'+$(pp.wg+pp.cc-pp.dep))+r('Paycheck deposit',$(pp.dep),'t')+r('Cash tips'+(pc&&typeof pp.mc!=='number'?(function(n){return n?' ('+n+' night'+(n===1?'':'s')+' logged, rest estimated)':' (estimate)';})(payLog(pp).filter(function(s){return s.cash>0;}).length):''),'+'+$(pc))+r('Total take-home',$(pp.dep+pc),'t')+'</div>';
   }
   var h=payHead('Paycheck estimate')+'<div class="seg"><button onclick="po--;render()">‹ Prev</button><button class="on">'+sd(P.s)+' – '+sd(P.e)+'</button><button onclick="po++;render()">Next ›</button></div>';
   h+='<div class="card hero"><small>Paycheck deposit · paid '+sd(P.p)+'</small><div class="big">'+$(A.dep)+'</div><small>With your cash tips ('+$(ch)+'): <b>'+$(A.dep+ch)+'</b> · '+L.length+' shift'+(L.length===1?'':'s')+' logged</small></div>';
@@ -455,7 +459,7 @@ function bindAdd(){["f_d","f_h","f_m","f_c","f_x","f_k"].forEach(function(i){doc
 function saveShift(){
   var s=readF();
   if(!s.date||!(s.hrs>0)){msg("Please enter a date and hours worked.");return;}
-  var pc=payOn(s.date);if(pc){msg("That date is already covered by your "+sd(pc.s)+" – "+sd(pc.e)+" paycheck in History.");return;}
+  var pc=payOn(s.date),was=edit&&D.shifts.filter(function(x){return x.id===edit;})[0];if(pc&&!(was&&was.date===s.date)){msg("That date is already covered by your "+sd(pc.s)+" – "+sd(pc.e)+" paycheck in History.");return;}
   if(edit){var i=D.shifts.findIndex(function(x){return x.id===edit;});s.id=edit;D.shifts[i]=s;}
   else{s.id=Date.now();D.shifts.push(s);}
   save();edit=null;go("dash");
